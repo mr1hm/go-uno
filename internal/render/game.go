@@ -26,6 +26,7 @@ type UnoGame struct {
 	pendingCard  int  // Card index waiting for color choice
 	screenWidth  int
 	screenHeight int
+	aiDelay      int // Frames to wait before AI acts
 }
 
 func NewUnoGame(playerNames []string) *UnoGame {
@@ -66,9 +67,15 @@ func (g *UnoGame) Update() error {
 
 	// Is it human's turn?
 	if g.state.CurrentPlayer == g.playerIndex {
+		g.aiDelay = 0
 		g.handleHumanTurn()
 	} else {
-		// AI turn
+		// AI turn with delay for readability
+		if g.aiDelay < 45 { // ~0.75 seconds at 60fps
+			g.aiDelay++
+			return nil
+		}
+		g.aiDelay = 0
 		g.handleAITurn()
 	}
 
@@ -84,11 +91,13 @@ func (g *UnoGame) handleHumanTurn() {
 	totalWidth := len(player.Hand)*CardGap + CardWidth
 	startX := (g.screenWidth - totalWidth) / 2
 
-	// Check card hover/click
+	// Check card hover/click - iterate in REVERSE so topmost (rightmost) card is checked first
+	liftAmount := 30
 	g.selectedCard = -1
-	for i := range player.Hand {
+	for i := len(player.Hand) - 1; i >= 0; i-- {
 		cardX := startX + i*CardGap
-		if mx >= cardX && mx < cardX+CardWidth && my >= handY && my < handY+CardHeight {
+		// Hitbox extends upward by lift amount so clicked lifted cards register
+		if mx >= cardX && mx < cardX+CardWidth && my >= handY-liftAmount && my < handY+CardHeight {
 			g.selectedCard = i
 
 			if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
@@ -109,6 +118,7 @@ func (g *UnoGame) handleHumanTurn() {
 				}
 				return
 			}
+			break // Stop after first (topmost) match for hover
 		}
 	}
 
@@ -273,18 +283,34 @@ func (g *UnoGame) drawPlayerHand(screen *ebiten.Image) {
 	handY := g.screenHeight - CardHeight - 40
 	totalWidth := len(player.Hand)*CardGap + CardWidth
 	startX := (g.screenWidth - totalWidth) / 2
+	isMyTurn := g.state.CurrentPlayer == g.playerIndex
+
+	// Draw highlight behind hand when it's your turn
+	if isMyTurn {
+		highlightPadding := 15
+		highlight := ebiten.NewImage(totalWidth+highlightPadding*2, CardHeight+highlightPadding*2)
+		highlight.Fill(color.RGBA{255, 255, 100, 40})
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Translate(float64(startX-highlightPadding), float64(handY-highlightPadding))
+		screen.DrawImage(highlight, op)
+	}
 
 	for i, card := range player.Hand {
 		x := float64(startX + i*CardGap)
 		y := float64(handY)
-		if i == g.selectedCard {
-			y -= 20 // Lift selected card
+		isSelected := i == g.selectedCard
+		if isSelected {
+			y -= 30 // Lift selected card more
 		}
-		DrawCard(screen, card, x, y, g.state.CurrentPlayer == g.playerIndex)
+		DrawCard(screen, card, x, y, isMyTurn && isSelected)
 	}
 
 	// Player name and card count
-	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("%s (%d cards)", player.Name, len(player.Hand)), startX, handY-20)
+	label := fmt.Sprintf("%s (%d cards)", player.Name, len(player.Hand))
+	if isMyTurn {
+		label = ">> " + label + " <<"
+	}
+	ebitenutil.DebugPrintAt(screen, label, startX, handY-25)
 }
 
 func (g *UnoGame) drawOpponents(screen *ebiten.Image) {
@@ -321,13 +347,20 @@ func (g *UnoGame) drawOpponents(screen *ebiten.Image) {
 }
 
 func (g *UnoGame) drawUI(screen *ebiten.Image) {
-	// Turn indicator
+	// Turn indicator - prominent banner when it's your turn
 	currentPlayer := g.state.CurrentPlayerObj()
-	turnText := fmt.Sprintf("Turn: %s", currentPlayer.Name)
 	if g.state.CurrentPlayer == g.playerIndex {
-		turnText += " (Your turn!)"
+		// Draw "YOUR TURN" banner
+		bannerHeight := 40
+		banner := ebiten.NewImage(g.screenWidth, bannerHeight)
+		banner.Fill(color.RGBA{0, 100, 0, 200})
+		op := &ebiten.DrawImageOptions{}
+		screen.DrawImage(banner, op)
+		ebitenutil.DebugPrintAt(screen, ">>> YOUR TURN - Click a card to play! <<<", g.screenWidth/2-150, 12)
+	} else {
+		turnText := fmt.Sprintf("Waiting for %s...", currentPlayer.Name)
+		ebitenutil.DebugPrintAt(screen, turnText, 10, 10)
 	}
-	ebitenutil.DebugPrintAt(screen, turnText, 10, 10)
 
 	// Direction indicator
 	dirText := "Direction: Clockwise"
@@ -336,9 +369,30 @@ func (g *UnoGame) drawUI(screen *ebiten.Image) {
 	}
 	ebitenutil.DebugPrintAt(screen, dirText, 10, 30)
 
+	// Debug: Show current card and required color
+	topCard := g.state.CurrentCard()
+	debugInfo := fmt.Sprintf("Top: %s | Required Color: %s", topCard, g.state.ChosenColor)
+	ebitenutil.DebugPrintAt(screen, debugInfo, 10, 50)
+
+	// Debug: Show playable card indices and selected card info
+	if g.state.CurrentPlayer == g.playerIndex {
+		player := g.state.CurrentPlayerObj()
+		playable := player.GetPlayableCards(topCard, g.state.ChosenColor)
+		playableStr := fmt.Sprintf("Playable indices: %v", playable)
+		ebitenutil.DebugPrintAt(screen, playableStr, 10, 70)
+
+		// Show selected card details
+		if g.selectedCard >= 0 && g.selectedCard < len(player.Hand) {
+			selectedCard := player.Hand[g.selectedCard]
+			canPlay := selectedCard.CanPlayOn(topCard, g.state.ChosenColor)
+			selectedStr := fmt.Sprintf("Selected [%d]: %s (can play: %v)", g.selectedCard, selectedCard, canPlay)
+			ebitenutil.DebugPrintAt(screen, selectedStr, 10, 110)
+		}
+	}
+
 	// Message
 	if g.message != "" {
-		ebitenutil.DebugPrintAt(screen, g.message, 10, 50)
+		ebitenutil.DebugPrintAt(screen, g.message, 10, 90)
 	}
 
 	// Pass button
