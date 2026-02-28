@@ -14,6 +14,9 @@ func main() {
 	ebiten.SetWindowTitle("Go Uno")
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 
+	// 60 TPS for smooth animations
+	ebiten.SetTPS(60)
+
 	if err := ebiten.RunGame(game); err != nil {
 		log.Fatal(err)
 	}

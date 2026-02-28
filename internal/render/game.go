@@ -44,6 +44,11 @@ type UnoGame struct {
 	caughtPopup       int    // Frames remaining to show popup
 	caughtPlayerName  string // Name of player who got caught
 	caughtByName      string // Name of player who caught them
+	// Announcement state
+	announcement      string  // Current announcement text
+	announcementTimer int     // Frames remaining
+	announcementFade  float64 // Current opacity (0-1)
+	announcementPhase int     // 0=fade in, 1=hold, 2=fade out
 }
 
 func NewUnoGame(playerNames []string) *UnoGame {
@@ -161,6 +166,9 @@ func (g *UnoGame) Update() error {
 	// Update draw animations
 	g.updateDrawAnimations()
 
+	// Update announcement fade
+	g.updateAnnouncement()
+
 	return nil
 }
 
@@ -192,6 +200,9 @@ func (g *UnoGame) Draw(screen *ebiten.Image) {
 	if g.caughtPopup > 0 {
 		g.drawCaughtPopup(screen)
 	}
+
+	// Draw centered announcement with fade
+	g.drawAnnouncement(screen)
 
 	if g.state.GameOver {
 		g.drawGameOver(screen)

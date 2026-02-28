@@ -49,10 +49,13 @@ func (g *UnoGame) handleGlobalButtons() {
 			// Always attempt to call UNO - game logic handles penalties
 			if err := g.state.CallUno(player.ID); err != nil {
 				g.message = "False UNO! +2 cards"
+				g.ShowAnnouncement("FALSE UNO! +2")
 			} else if player.HandSize() == 1 {
 				g.message = "Called UNO! (just in time)"
+				g.ShowAnnouncement("UNO!")
 			} else {
 				g.message = "Called UNO!"
+				g.ShowAnnouncement("UNO!")
 			}
 		}
 	}
@@ -76,6 +79,7 @@ func (g *UnoGame) handleGlobalButtons() {
 				// Valid challenge - target draws 2
 				if err := g.state.ChallengeUno(player.ID, vulnerableTarget.ID); err == nil {
 					g.message = fmt.Sprintf("Caught %s! +2 cards", vulnerableTarget.Name)
+					g.ShowAnnouncement(fmt.Sprintf("CAUGHT %s!", vulnerableTarget.Name))
 					g.caughtPopup = 120
 					g.caughtPlayerName = vulnerableTarget.Name
 					g.caughtByName = player.Name
@@ -84,6 +88,7 @@ func (g *UnoGame) handleGlobalButtons() {
 				// False challenge - challenger draws 2
 				g.state.PenalizePlayer(player.ID, 2)
 				g.message = "False challenge! +2 cards"
+				g.ShowAnnouncement("FALSE CATCH! +2")
 			}
 			// Clear any active challenge window
 			g.challengeWindow = 0

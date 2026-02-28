@@ -419,6 +419,9 @@ func getColorRGBA(c game.Color) color.RGBA {
 	}
 }
 
+// Cache for rotated text images to avoid allocations every frame
+var rotatedTextCache = make(map[string]*ebiten.Image)
+
 // drawRotatedText draws text at the given position with rotation
 // The text is rendered to an offscreen image first, then drawn with rotation
 func drawRotatedText(screen *ebiten.Image, text string, x, y int, rotation float64) {
@@ -426,9 +429,14 @@ func drawRotatedText(screen *ebiten.Image, text string, x, y int, rotation float
 	textWidth := len(text) * 6
 	textHeight := 16
 
-	// Create offscreen image for text
-	textImg := ebiten.NewImage(textWidth, textHeight)
-	ebitenutil.DebugPrintAt(textImg, text, 0, 0)
+	// Check cache for existing text image
+	textImg, exists := rotatedTextCache[text]
+	if !exists {
+		// Create and cache offscreen image for text
+		textImg = ebiten.NewImage(textWidth, textHeight)
+		ebitenutil.DebugPrintAt(textImg, text, 0, 0)
+		rotatedTextCache[text] = textImg
+	}
 
 	// Draw with rotation around center
 	op := &ebiten.DrawImageOptions{}

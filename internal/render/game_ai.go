@@ -21,6 +21,7 @@ func (g *UnoGame) handleAITurn() {
 			if p.ID != player.ID && p.HandSize() == 1 && !p.HasCalledUno {
 				if err := g.state.ChallengeUno(player.ID, p.ID); err == nil {
 					g.message = fmt.Sprintf("%s caught %s! +2 cards", player.Name, p.Name)
+					g.ShowAnnouncement(fmt.Sprintf("%s CAUGHT %s!", player.Name, p.Name))
 					// Show caught popup
 					g.caughtPopup = 120 // ~2 seconds at 60fps
 					g.caughtPlayerName = p.Name
@@ -54,6 +55,7 @@ func (g *UnoGame) handleAITurn() {
 			if randFloat() < 0.6 {
 				g.state.CallUno(player.ID)
 				g.message = fmt.Sprintf("%s called UNO!", player.Name)
+				g.ShowAnnouncement(fmt.Sprintf("%s: UNO!", player.Name))
 			}
 		}
 
