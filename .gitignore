@@ -1,6 +1,17 @@
 .claude
 CLAUDE.md
 .env
+.env.*
 
-# Compiled binary
+# Compiled binaries
 uno
+uno-server
+server
+*.exe
+
+# WASM build (built in CI)
+web/uno.wasm
+
+# OS files
+.DS_Store
+Thumbs.db
