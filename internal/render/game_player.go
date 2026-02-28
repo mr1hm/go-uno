@@ -85,11 +85,17 @@ func (g *UnoGame) handleGlobalButtons() {
 	mx, my := ebiten.CursorPosition()
 	player := g.state.Players[g.playerIndex]
 
-	// UNO button - next to discard pile
+	// Buttons - centered vertically relative to card piles
 	discardX := g.screenWidth/2 + 20
-	discardY := g.screenHeight/2 - CardHeight/2 + PlayAreaOffsetY
-	unoX := discardX + CardWidth + 15
-	unoY := discardY + CardHeight/2 - 20
+	buttonX := discardX + CardWidth + 15
+	pileCenterY := g.screenHeight/2 + PlayAreaOffsetY
+	buttonGap := 10
+	buttonHeight := 40
+	totalHeight := buttonHeight*2 + buttonGap
+
+	// UNO button
+	unoX := buttonX
+	unoY := pileCenterY - totalHeight/2
 	if mx >= unoX && mx < unoX+80 && my >= unoY && my < unoY+40 {
 		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) && !g.unoClickedThisTurn && !player.HasCalledUno {
 			g.unoClickedThisTurn = true
@@ -107,11 +113,10 @@ func (g *UnoGame) handleGlobalButtons() {
 		}
 	}
 
-	// Challenge button - centered below player's hand
-	buttonY := g.screenHeight - 45
-	centerX := g.screenWidth / 2
-	chalX := centerX - 50
-	if mx >= chalX && mx < chalX+100 && my >= buttonY && my < buttonY+40 {
+	// Challenge button - below UNO button
+	chalX := unoX
+	chalY := unoY + buttonHeight + buttonGap
+	if mx >= chalX && mx < chalX+80 && my >= chalY && my < chalY+40 {
 		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 			// Find anyone with 1 card who hasn't called UNO
 			var vulnerableTarget *game.Player
@@ -179,6 +184,7 @@ func (g *UnoGame) handlePlayerTurn() {
 					g.message = err.Error()
 				} else {
 					g.message = fmt.Sprintf("Played %s", card)
+					// No play animation or action text for self - drag already shows the play
 					// Close challenge window - player took their turn
 					g.challengeWindow = 0
 					g.challengeTargetID = ""
@@ -215,6 +221,7 @@ func (g *UnoGame) handlePlayerTurn() {
 				g.message = err.Error()
 			} else {
 				g.message = fmt.Sprintf("Drew %s", card)
+				g.SetPlayerAction(g.playerIndex, "Draw 1")
 				// Animation triggered by hand size change detection
 
 				// Check if drawn card is playable, if not pass turn
@@ -232,6 +239,7 @@ func (g *UnoGame) handlePlayerTurn() {
 		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 			g.state.PassTurn(player.ID)
 			g.message = "Passed"
+			g.SetPlayerAction(g.playerIndex, "Pass")
 		}
 	}
 

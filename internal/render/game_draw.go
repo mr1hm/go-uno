@@ -197,6 +197,12 @@ func (g *UnoGame) drawPlayerHand(screen *ebiten.Image) {
 		unoY := labelY + 30 // Below the name
 		DrawFanText(screen, "UNO!", labelX, unoY, 80, 0.8) // Larger radius and angle for spacing
 	}
+
+	// Draw action text above cards
+	if action := g.GetPlayerAction(g.playerIndex); action != "" {
+		actionY := labelY - 25
+		DrawLabel(screen, action, labelX-float64(len(action)*5), actionY, "small")
+	}
 }
 
 func (g *UnoGame) drawOpponents(screen *ebiten.Image) {
@@ -221,8 +227,7 @@ func (g *UnoGame) drawOpponents(screen *ebiten.Image) {
 		var labelX, labelY int
 
 		// Common offsets for symmetric positioning
-		sideMargin := 120                                          // Distance from edge for card anchor
-		labelMargin := 20                                          // Distance from edge for labels
+		sideMargin := 120 // Distance from edge for card anchor
 		sideY := float64(g.screenHeight)/2 + float64(PlayAreaOffsetY)
 
 		switch i {
@@ -230,20 +235,20 @@ func (g *UnoGame) drawOpponents(screen *ebiten.Image) {
 			anchorX = float64(sideMargin)
 			anchorY = sideY
 			baseRotation = math.Pi / 2
-			labelX = labelMargin
-			labelY = g.screenHeight/2 + PlayAreaOffsetY - 80
+			labelX = sideMargin + CardHeight/2 + 30 // To the right of cards (towards center)
+			labelY = g.screenHeight/2 + PlayAreaOffsetY
 		case 2: // Top - fan facing down
 			anchorX = float64(g.screenWidth) / 2
 			anchorY = 100
 			baseRotation = math.Pi
-			labelX = g.screenWidth/2 - 40
-			labelY = 15
+			labelX = g.screenWidth / 2
+			labelY = 100 + CardHeight/2 + 30 // Below cards (towards center)
 		case 3: // Right side - fan facing left
 			anchorX = float64(g.screenWidth - sideMargin)
 			anchorY = sideY
 			baseRotation = -math.Pi / 2
-			labelX = g.screenWidth - labelMargin // Mirror of left side (DrawLabelRotated centers text)
-			labelY = g.screenHeight/2 + PlayAreaOffsetY - 80
+			labelX = g.screenWidth - sideMargin - CardHeight/2 - 30 // To the left of cards (towards center)
+			labelY = g.screenHeight/2 + PlayAreaOffsetY
 		}
 
 		// Draw cards in fan arrangement
@@ -287,6 +292,14 @@ func (g *UnoGame) drawOpponents(screen *ebiten.Image) {
 			unoX := float64(labelX) + unoOffsetDist*math.Cos(baseRotation+math.Pi/2)
 			unoY := float64(labelY) + unoOffsetDist*math.Sin(baseRotation+math.Pi/2)
 			DrawFanTextRotated(screen, "UNO!", unoX, unoY, 60, 0.6, baseRotation) // Larger radius and angle
+		}
+
+		// Draw action text near opponent
+		if action := g.GetPlayerAction(i); action != "" {
+			actionOffsetDist := -30.0
+			actionX := float64(labelX) + actionOffsetDist*math.Cos(baseRotation+math.Pi/2)
+			actionY := float64(labelY) + actionOffsetDist*math.Sin(baseRotation+math.Pi/2)
+			DrawLabelRotated(screen, action, actionX, actionY, baseRotation)
 		}
 	}
 }
@@ -380,11 +393,17 @@ func (g *UnoGame) drawUI(screen *ebiten.Image) {
 		ebitenutil.DebugPrintAt(screen, "PASS", passX+35, passY+12)
 	}
 
-	// UNO button - next to discard pile (right side)
+	// Buttons - centered vertically relative to card piles
 	discardX := g.screenWidth/2 + 20
-	discardY := g.screenHeight/2 - CardHeight/2 + PlayAreaOffsetY
-	unoX := discardX + CardWidth + 15
-	unoY := discardY + CardHeight/2 - 20
+	buttonX := discardX + CardWidth + 15
+	pileCenterY := g.screenHeight/2 + PlayAreaOffsetY
+	buttonGap := 10
+	buttonHeight := 40
+	totalHeight := buttonHeight*2 + buttonGap // Two buttons stacked
+
+	// UNO button
+	unoX := buttonX
+	unoY := pileCenterY - totalHeight/2
 	if unoButtonRed == nil {
 		unoButtonRed = ebiten.NewImage(80, 40)
 	}
@@ -394,19 +413,18 @@ func (g *UnoGame) drawUI(screen *ebiten.Image) {
 	screen.DrawImage(unoButtonRed, unoOp)
 	ebitenutil.DebugPrintAt(screen, "UNO!", unoX+25, unoY+12)
 
-	// Challenge button - centered below player's hand
-	buttonY := g.screenHeight - 45
-	centerX := g.screenWidth / 2
-	chalX := centerX - 50
+	// Challenge button - below UNO button
+	chalX := unoX
+	chalY := unoY + buttonHeight + buttonGap
 	if challengeBtn == nil {
-		challengeBtn = ebiten.NewImage(100, 40)
+		challengeBtn = ebiten.NewImage(80, 40)
 	}
 	// Always gray - no visual hint when someone is vulnerable
 	challengeBtn.Fill(color.RGBA{80, 80, 80, 255})
 	chalOp := &ebiten.DrawImageOptions{}
-	chalOp.GeoM.Translate(float64(chalX), float64(buttonY))
+	chalOp.GeoM.Translate(float64(chalX), float64(chalY))
 	screen.DrawImage(challengeBtn, chalOp)
-	ebitenutil.DebugPrintAt(screen, "CATCH!", chalX+22, buttonY+12)
+	ebitenutil.DebugPrintAt(screen, "CATCH", chalX+20, chalY+12)
 }
 
 func (g *UnoGame) drawColorPicker(screen *ebiten.Image) {

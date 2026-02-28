@@ -13,6 +13,7 @@ func randFloat() float64 {
 
 func (g *UnoGame) handleAITurn() {
 	player := g.state.CurrentPlayerObj()
+	playerIdx := g.state.CurrentPlayer // Save before turn changes
 
 	// AI checks if any player forgot to call UNO (70% chance to notice)
 	challenged := false
@@ -21,7 +22,7 @@ func (g *UnoGame) handleAITurn() {
 			if p.ID != player.ID && p.HandSize() == 1 && !p.HasCalledUno {
 				if err := g.state.ChallengeUno(player.ID, p.ID); err == nil {
 					g.message = fmt.Sprintf("%s caught %s! +2 cards", player.Name, p.Name)
-					g.ShowAnnouncement(AnnouncementFalseCatch, g.state.CurrentPlayer, false)
+					g.ShowAnnouncement(AnnouncementFalseCatch, playerIdx, false)
 					// Show caught popup
 					g.caughtPopup = 120 // ~2 seconds at 60fps
 					g.caughtPlayerName = p.Name
@@ -55,7 +56,7 @@ func (g *UnoGame) handleAITurn() {
 			if randFloat() < 0.6 {
 				g.state.CallUno(player.ID)
 				g.message = fmt.Sprintf("%s called UNO!", player.Name)
-				g.ShowAnnouncement(AnnouncementUNO, g.state.CurrentPlayer, false)
+				g.ShowAnnouncement(AnnouncementUNO, playerIdx, false)
 			}
 		}
 
@@ -71,6 +72,7 @@ func (g *UnoGame) handleAITurn() {
 
 		g.state.PlayCard(player.ID, cardIdx, chosenColor)
 		g.message = fmt.Sprintf("%s played %s", player.Name, card)
+		g.startPlayAnimation(playerIdx, card)
 	} else {
 		// Draw a card (animation triggered by hand size change detection)
 		card, _ := g.state.DrawCard(player.ID)
@@ -83,9 +85,12 @@ func (g *UnoGame) handleAITurn() {
 			// Find the card we just drew (last in hand)
 			g.state.PlayCard(player.ID, len(player.Hand)-1, chosenColor)
 			g.message = fmt.Sprintf("%s drew and played %s", player.Name, card)
+			g.startPlayAnimation(playerIdx, card)
+			g.SetPlayerAction(playerIdx, "Draw & Play")
 		} else {
 			g.state.PassTurn(player.ID)
 			g.message = fmt.Sprintf("%s drew and passed", player.Name)
+			g.SetPlayerAction(playerIdx, "Draw & Pass")
 		}
 	}
 }

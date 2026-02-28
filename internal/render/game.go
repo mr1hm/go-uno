@@ -40,6 +40,11 @@ type UnoGame struct {
 	lastCurrentPlayer  int
 	// Draw animation state
 	drawAnims []drawAnimation
+	// Play animation state (card moving to discard pile)
+	playAnims []playAnimation
+	// Player action text (shown above their cards)
+	playerActions      []string // Action text per player
+	playerActionTimers []int    // Frames remaining to show action
 	// Caught popup state
 	caughtPopup       int    // Frames remaining to show popup
 	caughtPlayerName  string // Name of player who got caught
@@ -165,8 +170,10 @@ func (g *UnoGame) Update() error {
 		}
 	}
 
-	// Update draw animations
+	// Update animations
 	g.updateDrawAnimations()
+	g.updatePlayAnimations()
+	g.updatePlayerActions()
 
 	// Update announcement fade
 	g.updateAnnouncement()
@@ -193,6 +200,7 @@ func (g *UnoGame) Draw(screen *ebiten.Image) {
 	g.drawPlayerHand(screen)
 	g.drawOpponents(screen)
 	g.drawDrawAnimations(screen)
+	g.drawPlayAnimations(screen)
 	g.drawUI(screen)
 
 	if g.colorPicker {

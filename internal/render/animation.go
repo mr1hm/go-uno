@@ -2,6 +2,7 @@ package render
 
 import (
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/mr1hm/go-uno/internal/game"
 )
 
 // drawAnimation represents a card being drawn and moving to a player
@@ -11,6 +12,19 @@ type drawAnimation struct {
 	targetX      float64 // Destination X
 	targetY      float64 // Destination Y
 	progress     float64 // 0 to 1 (negative = delayed start)
+}
+
+// playAnimation represents a card being played and moving to the discard pile
+type playAnimation struct {
+	fromPlayer int         // Which player played the card
+	card       game.Card   // The card being played
+	x, y       float64     // Current position
+	startX     float64     // Starting X
+	startY     float64     // Starting Y
+	targetX    float64     // Destination X (discard pile)
+	targetY    float64     // Destination Y (discard pile)
+	progress   float64     // 0 to 1
+	rotation   float64     // Current rotation
 }
 
 // CountAnimatingCards returns how many cards are currently animating to a player
@@ -149,4 +163,105 @@ func (g *UnoGame) detectAndTriggerDrawAnimations() {
 			}
 		}
 	}
+}
+
+const (
+	playAnimSpeed     = 0.12
+	actionTextFrames  = 90 // ~1.5 seconds at 60fps
+)
+
+// startPlayAnimation starts a card play animation from player to discard pile
+func (g *UnoGame) startPlayAnimation(playerIndex int, card game.Card) {
+	var startX, startY float64
+
+	// Get start position based on player
+	if playerIndex == g.playerIndex {
+		startX = float64(g.screenWidth) / 2
+		startY = float64(g.screenHeight) - CardHeight - 40
+	} else {
+		switch playerIndex {
+		case 1: // Left
+			startX = 120
+			startY = float64(g.screenHeight)/2 + float64(PlayAreaOffsetY)
+		case 2: // Top
+			startX = float64(g.screenWidth) / 2
+			startY = 100
+		case 3: // Right
+			startX = float64(g.screenWidth) - 120
+			startY = float64(g.screenHeight)/2 + float64(PlayAreaOffsetY)
+		}
+	}
+
+	// Target is the discard pile
+	targetX := float64(g.screenWidth/2 + 20)
+	targetY := float64(g.screenHeight/2 - CardHeight/2 + PlayAreaOffsetY)
+
+	g.playAnims = append(g.playAnims, playAnimation{
+		fromPlayer: playerIndex,
+		card:       card,
+		x:          startX,
+		y:          startY,
+		startX:     startX,
+		startY:     startY,
+		targetX:    targetX,
+		targetY:    targetY,
+		progress:   0,
+		rotation:   0,
+	})
+}
+
+// updatePlayAnimations advances all play animations
+func (g *UnoGame) updatePlayAnimations() {
+	remaining := make([]playAnimation, 0, len(g.playAnims))
+	for _, anim := range g.playAnims {
+		anim.progress += playAnimSpeed
+		if anim.progress >= 1 {
+			continue // Animation complete
+		}
+		// Lerp position
+		anim.x = anim.startX + (anim.targetX-anim.startX)*anim.progress
+		anim.y = anim.startY + (anim.targetY-anim.startY)*anim.progress
+		remaining = append(remaining, anim)
+	}
+	g.playAnims = remaining
+}
+
+// drawPlayAnimations renders all active play animations
+func (g *UnoGame) drawPlayAnimations(screen *ebiten.Image) {
+	for _, anim := range g.playAnims {
+		DrawCard(screen, anim.card, anim.x, anim.y, false)
+	}
+}
+
+// SetPlayerAction sets action text for a player (Pass, Draw 1, etc.)
+func (g *UnoGame) SetPlayerAction(playerIndex int, action string) {
+	// Initialize slices if needed
+	for len(g.playerActions) <= playerIndex {
+		g.playerActions = append(g.playerActions, "")
+	}
+	for len(g.playerActionTimers) <= playerIndex {
+		g.playerActionTimers = append(g.playerActionTimers, 0)
+	}
+	g.playerActions[playerIndex] = action
+	g.playerActionTimers[playerIndex] = actionTextFrames
+}
+
+// updatePlayerActions decrements action timers
+func (g *UnoGame) updatePlayerActions() {
+	for i := range g.playerActionTimers {
+		if g.playerActionTimers[i] > 0 {
+			g.playerActionTimers[i]--
+		}
+	}
+}
+
+// GetPlayerAction returns the current action text for a player (empty if expired)
+func (g *UnoGame) GetPlayerAction(playerIndex int) string {
+	if playerIndex >= len(g.playerActions) || playerIndex >= len(g.playerActionTimers) {
+		return ""
+	}
+	if g.playerActionTimers[playerIndex] <= 0 {
+		return ""
+	}
+	return g.playerActions[playerIndex]
 }
