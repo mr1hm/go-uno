@@ -36,7 +36,7 @@ const (
 func (g *UnoGame) updateDrawAnimations() {
 	remaining := make([]drawAnimation, 0, len(g.drawAnims))
 	drawPileX := float64(g.screenWidth/2 - CardWidth - 20)
-	drawPileY := float64(g.screenHeight/2 - CardHeight/2)
+	drawPileY := float64(g.screenHeight/2 - CardHeight/2 + PlayAreaOffsetY)
 
 	for _, anim := range g.drawAnims {
 		anim.progress += drawAnimSpeed
@@ -86,7 +86,7 @@ func (g *UnoGame) startDrawAnimationWithDelay(playerIndex int, startProgress flo
 	}
 
 	drawPileX := float64(g.screenWidth/2 - CardWidth - 20)
-	drawPileY := float64(g.screenHeight/2 - CardHeight/2)
+	drawPileY := float64(g.screenHeight/2 - CardHeight/2 + PlayAreaOffsetY)
 
 	g.drawAnims = append(g.drawAnims, drawAnimation{
 		targetPlayer: playerIndex,

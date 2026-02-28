@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	game := render.NewUnoGame([]string{"You", "CPU 1", "CPU 2"})
+	game := render.NewUnoGame([]string{"You", "CPU 1", "CPU 2", "CPU 3"})
 
 	ebiten.SetWindowSize(1280, 720)
 	ebiten.SetWindowTitle("Go Uno")

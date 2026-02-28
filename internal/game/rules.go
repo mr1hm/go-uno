@@ -110,13 +110,26 @@ func (g *GameState) applyCardEffect(card Card) {
 
 // drawCardsForCurrentPlayer draws cards for current player, reshuffling if needed
 func (g *GameState) drawCardsForCurrentPlayer(n int) {
+	g.drawCardsForPlayer(g.CurrentPlayerObj(), n)
+}
+
+// drawCardsForPlayer draws cards for a specific player, reshuffling if needed
+func (g *GameState) drawCardsForPlayer(player *Player, n int) {
 	for i := 0; i < n; i++ {
 		if g.DrawPile.Remaining() == 0 {
 			g.reshuffleDiscardIntoDraw()
 		}
 		if card, ok := g.DrawPile.Draw(); ok {
-			g.CurrentPlayerObj().AddCard(card)
+			player.AddCard(card)
 		}
+	}
+}
+
+// PenalizePlayer makes a player draw penalty cards (used for false UNO/challenge)
+func (g *GameState) PenalizePlayer(playerID string, n int) {
+	player := g.GetPlayerByID(playerID)
+	if player != nil {
+		g.drawCardsForPlayer(player, n)
 	}
 }
 
@@ -147,6 +160,7 @@ func (g *GameState) DrawCard(playerID string) (Card, error) {
 }
 
 // PassTurn passes turn after drawing (if drawn card wasn't played)
+// Penalizes player if they called UNO but didn't play down to 1 card
 func (g *GameState) PassTurn(playerID string) error {
 	if g.GameOver {
 		return ErrGameOver
@@ -157,18 +171,34 @@ func (g *GameState) PassTurn(playerID string) error {
 		return ErrNotYourTurn
 	}
 
+	// If player called UNO but still has more than 1 card, penalize them
+	if player.HasCalledUno && player.HandSize() > 1 {
+		g.drawCardsForPlayer(player, 2)
+		player.HasCalledUno = false
+	}
+
 	g.NextPlayer()
 	return nil
 }
 
 // CallUno marks that player called Uno
+// Returns error and draws 2 penalty cards if called incorrectly (hand > 2 or already called)
 func (g *GameState) CallUno(playerID string) error {
 	player := g.GetPlayerByID(playerID)
 	if player == nil {
 		return ErrInvalidTarget
 	}
 
+	if player.HasCalledUno {
+		// Already called UNO - draw 2 penalty cards
+		g.drawCardsForPlayer(player, 2)
+		player.HasCalledUno = false // Reset so they can try again
+		return ErrCannotCallUno
+	}
+
 	if player.HandSize() > 2 {
+		// False UNO call - draw 2 penalty cards
+		g.drawCardsForPlayer(player, 2)
 		return ErrCannotCallUno
 	}
 
@@ -177,6 +207,7 @@ func (g *GameState) CallUno(playerID string) error {
 }
 
 // ChallengeUno penalizes player who didn't call Uno (they draw 2)
+// If challenge is invalid (target called UNO or has != 1 card), challenger draws 2
 func (g *GameState) ChallengeUno(challengerID, targetID string) error {
 	challenger := g.GetPlayerByID(challengerID)
 	target := g.GetPlayerByID(targetID)
@@ -187,18 +218,13 @@ func (g *GameState) ChallengeUno(challengerID, targetID string) error {
 
 	// Target must have exactly 1 card and not have called Uno
 	if target.HandSize() != 1 || target.HasCalledUno {
-		return errors.New("invalid challenge")
+		// False challenge - challenger draws 2 penalty cards
+		g.drawCardsForPlayer(challenger, 2)
+		return errors.New("false challenge - you draw 2")
 	}
 
-	// Target draws 2 penalty cards
-	for i := 0; i < 2; i++ {
-		if g.DrawPile.Remaining() == 0 {
-			g.reshuffleDiscardIntoDraw()
-		}
-		if card, ok := g.DrawPile.Draw(); ok {
-			target.AddCard(card)
-		}
-	}
+	// Valid challenge - target draws 2 penalty cards
+	g.drawCardsForPlayer(target, 2)
 
 	return nil
 }

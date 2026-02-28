@@ -20,6 +20,10 @@ var (
 	cardBackSprite *ebiten.Image
 	backgroundImg  *ebiten.Image
 
+	// Direction arrows (CC BY 3.0 by Delapouite from game-icons.net)
+	clockwiseArrow     *ebiten.Image
+	anticlockwiseArrow *ebiten.Image
+
 	// Base images for compositing
 	colorBases    = make(map[game.Color]*ebiten.Image)
 	valueOverlays = make(map[game.Value]*ebiten.Image)
@@ -71,6 +75,10 @@ func loadBaseAssets() {
 
 	// Load background
 	backgroundImg = loadImage("assets/background.png")
+
+	// Load direction arrows
+	clockwiseArrow = loadImage("assets/clockwise.png")
+	anticlockwiseArrow = loadImage("assets/anticlockwise.png")
 }
 
 // GetBackgroundSprite returns the background image
@@ -144,4 +152,12 @@ func GetCardSprite(card game.Card) *ebiten.Image {
 // GetCardBackSprite returns the card back sprite
 func GetCardBackSprite() *ebiten.Image {
 	return cardBackSprite
+}
+
+// GetDirectionArrow returns the appropriate arrow for the game direction
+func GetDirectionArrow(clockwise bool) *ebiten.Image {
+	if clockwise {
+		return clockwiseArrow
+	}
+	return anticlockwiseArrow
 }
