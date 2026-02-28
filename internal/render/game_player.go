@@ -14,12 +14,10 @@ func (g *UnoGame) handleCardHover() {
 	player := g.state.Players[g.playerIndex]
 	mx, my := ebiten.CursorPosition()
 
-	// Don't update hover during drag
 	if g.dragging {
 		return
 	}
 
-	// Fan parameters (must match drawPlayerHand)
 	animatingCount := g.CountAnimatingCards(g.playerIndex)
 	visibleCards := len(player.Hand) - animatingCount
 	if visibleCards == 0 {
@@ -27,11 +25,14 @@ func (g *UnoGame) handleCardHover() {
 		return
 	}
 
-	arcRadius := 800.0
-	centerX := float64(g.screenWidth) / 2
-	centerY := float64(g.screenHeight) + arcRadius - CardHeight - 20 // Must match drawPlayerHand
+	cardW := g.cardWidthF()
+	cardH := g.cardHeightF()
+	scale := g.scale()
 
-	// Adjust fan angle based on number of cards (must match drawPlayerHand)
+	arcRadius := 800.0 * scale
+	centerX := float64(g.screenWidth) / 2
+	centerY := float64(g.screenHeight) + arcRadius - cardH - 20*scale
+
 	var actualFanAngle float64
 	switch {
 	case visibleCards <= 1:
@@ -46,7 +47,6 @@ func (g *UnoGame) handleCardHover() {
 		actualFanAngle = min(0.6, 0.4+float64(visibleCards-7)*0.03)
 	}
 
-	// Find card closest to mouse (checking from top card to bottom for overlap priority)
 	g.selectedCard = -1
 	for i := visibleCards - 1; i >= 0; i-- {
 		var angle float64
@@ -57,23 +57,19 @@ func (g *UnoGame) handleCardHover() {
 			angle = (t - 0.5) * actualFanAngle
 		}
 
-		// Calculate card center position
 		cardCenterX := centerX + arcRadius*math.Sin(angle)
 		cardCenterY := centerY - arcRadius*math.Cos(angle)
 
-		// Check if mouse is within card bounds (rough rectangular check)
 		dx := float64(mx) - cardCenterX
 		dy := float64(my) - cardCenterY
 
-		// Rotate mouse position to card's local space
 		cos := math.Cos(-angle)
 		sin := math.Sin(-angle)
 		localX := dx*cos - dy*sin
 		localY := dx*sin + dy*cos
 
-		// Check if within card bounds
-		if localX >= -CardWidth/2 && localX <= CardWidth/2 &&
-			localY >= -CardHeight/2 && localY <= CardHeight/2+30 { // +30 for lift area
+		if localX >= -cardW/2 && localX <= cardW/2 &&
+			localY >= -cardH/2 && localY <= cardH/2+30*scale {
 			g.selectedCard = i
 			break
 		}
@@ -84,22 +80,23 @@ func (g *UnoGame) handleCardHover() {
 func (g *UnoGame) handleGlobalButtons() {
 	mx, my := ebiten.CursorPosition()
 	player := g.state.Players[g.playerIndex]
+	scale := g.scale()
+	cardW := g.cardWidthF()
+	offsetY := g.playAreaOffsetYF()
 
-	// Buttons - centered vertically relative to card piles
-	discardX := g.screenWidth/2 + 20
-	buttonX := discardX + CardWidth + 15
-	pileCenterY := g.screenHeight/2 + PlayAreaOffsetY
-	buttonGap := 10
-	buttonHeight := 40
+	discardX := float64(g.screenWidth/2) + 20*scale
+	buttonX := int(discardX + cardW + 15*scale)
+	pileCenterY := g.screenHeight/2 + int(offsetY)
+	buttonGap := int(10 * scale)
+	buttonHeight := int(40 * scale)
+	buttonWidth := int(80 * scale)
 	totalHeight := buttonHeight*2 + buttonGap
 
-	// UNO button
 	unoX := buttonX
 	unoY := pileCenterY - totalHeight/2
-	if mx >= unoX && mx < unoX+80 && my >= unoY && my < unoY+40 {
+	if mx >= unoX && mx < unoX+buttonWidth && my >= unoY && my < unoY+buttonHeight {
 		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) && !g.unoClickedThisTurn && !player.HasCalledUno {
 			g.unoClickedThisTurn = true
-			// Always attempt to call UNO - game logic handles penalties
 			if err := g.state.CallUno(player.ID); err != nil {
 				g.message = "False UNO! +2 cards"
 				g.ShowAnnouncement(AnnouncementUNO, g.playerIndex, true)
@@ -113,12 +110,10 @@ func (g *UnoGame) handleGlobalButtons() {
 		}
 	}
 
-	// Challenge button - below UNO button
 	chalX := unoX
 	chalY := unoY + buttonHeight + buttonGap
-	if mx >= chalX && mx < chalX+80 && my >= chalY && my < chalY+40 {
+	if mx >= chalX && mx < chalX+buttonWidth && my >= chalY && my < chalY+buttonHeight {
 		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
-			// Find anyone with 1 card who hasn't called UNO
 			var vulnerableTarget *game.Player
 			for _, p := range g.state.Players {
 				if p.ID != player.ID && p.HandSize() == 1 && !p.HasCalledUno {
@@ -128,7 +123,6 @@ func (g *UnoGame) handleGlobalButtons() {
 			}
 
 			if vulnerableTarget != nil {
-				// Valid challenge - target draws 2
 				if err := g.state.ChallengeUno(player.ID, vulnerableTarget.ID); err == nil {
 					g.message = fmt.Sprintf("Caught %s! +2 cards", vulnerableTarget.Name)
 					g.ShowAnnouncement(AnnouncementFalseCatch, g.playerIndex, false)
@@ -137,12 +131,10 @@ func (g *UnoGame) handleGlobalButtons() {
 					g.caughtByName = player.Name
 				}
 			} else {
-				// False challenge - challenger draws 2
 				g.state.PenalizePlayer(player.ID, 2)
 				g.message = "False challenge! +2 cards"
 				g.ShowAnnouncement(AnnouncementFalseCatch, g.playerIndex, true)
 			}
-			// Clear any active challenge window
 			g.challengeWindow = 0
 			g.challengeTargetID = ""
 		}
@@ -152,40 +144,39 @@ func (g *UnoGame) handleGlobalButtons() {
 func (g *UnoGame) handlePlayerTurn() {
 	player := g.state.CurrentPlayerObj()
 	mx, my := ebiten.CursorPosition()
+	scale := g.scale()
+	cardW := g.cardWidthF()
+	cardH := g.cardHeightF()
+	offsetY := g.playAreaOffsetYF()
 
-	// Discard pile position (drop target)
-	discardX := g.screenWidth/2 + 20
-	discardY := g.screenHeight/2 - CardHeight/2 + PlayAreaOffsetY
+	discardX := int(float64(g.screenWidth/2) + 20*scale)
+	discardY := int(float64(g.screenHeight/2) - cardH/2 + offsetY)
+	cardWi := int(cardW)
+	cardHi := int(cardH)
 
-	// Handle dragging
 	if g.dragging {
-		g.dragX = float64(mx) - CardWidth/2
-		g.dragY = float64(my) - CardHeight/2
+		g.dragX = float64(mx) - cardW/2
+		g.dragY = float64(my) - cardH/2
 
-		// Check for mouse release
 		if inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft) {
 			g.dragging = false
 
-			// Check if dropped on discard pile
-			if mx >= discardX-30 && mx < discardX+CardWidth+30 &&
-				my >= discardY-30 && my < discardY+CardHeight+30 {
+			dropMargin := int(30 * scale)
+			if mx >= discardX-dropMargin && mx < discardX+cardWi+dropMargin &&
+				my >= discardY-dropMargin && my < discardY+cardHi+dropMargin {
 
 				card := player.Hand[g.dragCardIndex]
 
-				// Wild card needs color picker
 				if card.IsWild() {
 					g.colorPicker = true
 					g.pendingCard = g.dragCardIndex
 					return
 				}
 
-				// Try to play the card
 				if err := g.state.PlayCard(player.ID, g.dragCardIndex, g.state.ChosenColor); err != nil {
 					g.message = err.Error()
 				} else {
 					g.message = fmt.Sprintf("Played %s", card)
-					// No play animation or action text for self - drag already shows the play
-					// Close challenge window - player took their turn
 					g.challengeWindow = 0
 					g.challengeTargetID = ""
 				}
@@ -195,24 +186,21 @@ func (g *UnoGame) handlePlayerTurn() {
 		return
 	}
 
-	// Check for drag start on selected card (hover already handled by handleCardHover)
 	if g.selectedCard >= 0 && g.selectedCard < len(player.Hand) {
 		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 			g.dragging = true
 			g.dragCardIndex = g.selectedCard
-			g.dragX = float64(mx) - CardWidth/2
-			g.dragY = float64(my) - CardHeight/2
+			g.dragX = float64(mx) - cardW/2
+			g.dragY = float64(my) - cardH/2
 			return
 		}
 	}
 
-	// Check draw pile click
-	drawX := g.screenWidth/2 - CardWidth - 20
-	drawY := g.screenHeight/2 - CardHeight/2 + PlayAreaOffsetY
+	drawX := int(float64(g.screenWidth/2) - cardW - 20*scale)
+	drawY := int(float64(g.screenHeight/2) - cardH/2 + offsetY)
 
-	if mx >= drawX && mx < drawX+CardWidth && my >= drawY && my < drawY+CardHeight {
+	if mx >= drawX && mx < drawX+cardWi && my >= drawY && my < drawY+cardHi {
 		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
-			// Close challenge window - player took their turn
 			g.challengeWindow = 0
 			g.challengeTargetID = ""
 
@@ -222,9 +210,7 @@ func (g *UnoGame) handlePlayerTurn() {
 			} else {
 				g.message = fmt.Sprintf("Drew %s", card)
 				g.SetPlayerAction(g.playerIndex, "Draw 1")
-				// Animation triggered by hand size change detection
 
-				// Check if drawn card is playable, if not pass turn
 				if !card.CanPlayOn(g.state.CurrentCard(), g.state.ChosenColor) {
 					g.state.PassTurn(player.ID)
 				}
@@ -232,29 +218,32 @@ func (g *UnoGame) handlePlayerTurn() {
 		}
 	}
 
-	// Check pass button (bottom right)
-	passX := g.screenWidth - 120
-	passY := g.screenHeight - 60
-	if mx >= passX && mx < passX+100 && my >= passY && my < passY+40 {
+	passX := g.screenWidth - int(120*scale)
+	passY := g.screenHeight - int(60*scale)
+	passBtnW := int(100 * scale)
+	passBtnH := int(40 * scale)
+	if mx >= passX && mx < passX+passBtnW && my >= passY && my < passY+passBtnH {
 		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 			g.state.PassTurn(player.ID)
 			g.message = "Passed"
 			g.SetPlayerAction(g.playerIndex, "Pass")
 		}
 	}
-
-	// UNO and Challenge buttons are handled in handleGlobalButtons()
 }
 
 func (g *UnoGame) handleColorPicker() {
 	mx, my := ebiten.CursorPosition()
+	scale := g.scale()
+
 	colors := []game.Color{game.ColorRed, game.ColorYellow, game.ColorGreen, game.ColorBlue}
-	boxSize := 60
-	startX := g.screenWidth/2 - (boxSize*4+30)/2
+	boxSize := int(60 * scale)
+	gap := int(10 * scale)
+	totalWidth := boxSize*4 + gap*3
+	startX := g.screenWidth/2 - totalWidth/2
 	startY := g.screenHeight/2 - boxSize/2
 
 	for i, c := range colors {
-		x := startX + i*(boxSize+10)
+		x := startX + i*(boxSize+gap)
 		if mx >= x && mx < x+boxSize && my >= startY && my < startY+boxSize {
 			if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 				player := g.state.CurrentPlayerObj()

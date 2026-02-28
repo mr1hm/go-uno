@@ -8,11 +8,22 @@ import (
 	"github.com/mr1hm/go-uno/internal/game"
 )
 
+// Base dimensions designed for 1280x720
 const (
-	CardWidth        = 116
-	CardHeight       = 168
-	CardGap          = 40
-	PlayAreaOffsetY  = 30 // Shift play area down to make room for direction arrow
+	baseWidth       = 1280
+	baseHeight      = 720
+	baseCardWidth   = 116
+	baseCardHeight  = 168
+	baseCardGap     = 40
+	basePlayAreaOffsetY = 30
+)
+
+// Legacy constants for compatibility - will be replaced by scaled methods
+const (
+	CardWidth       = baseCardWidth
+	CardHeight      = baseCardHeight
+	CardGap         = baseCardGap
+	PlayAreaOffsetY = basePlayAreaOffsetY
 )
 
 type UnoGame struct {
@@ -72,6 +83,28 @@ func NewUnoGame(playerNames []string) *UnoGame {
 	}
 	return g
 }
+
+// scale returns the current scale factor based on screen size
+func (g *UnoGame) scale() float64 {
+	scaleX := float64(g.screenWidth) / baseWidth
+	scaleY := float64(g.screenHeight) / baseHeight
+	if scaleX < scaleY {
+		return scaleX
+	}
+	return scaleY
+}
+
+// Scaled dimension helpers
+func (g *UnoGame) cardWidth() int   { return int(baseCardWidth * g.scale()) }
+func (g *UnoGame) cardHeight() int  { return int(baseCardHeight * g.scale()) }
+func (g *UnoGame) cardGap() int     { return int(baseCardGap * g.scale()) }
+func (g *UnoGame) playAreaOffsetY() int { return int(basePlayAreaOffsetY * g.scale()) }
+
+// Float versions for precise positioning
+func (g *UnoGame) cardWidthF() float64   { return baseCardWidth * g.scale() }
+func (g *UnoGame) cardHeightF() float64  { return baseCardHeight * g.scale() }
+func (g *UnoGame) cardGapF() float64     { return baseCardGap * g.scale() }
+func (g *UnoGame) playAreaOffsetYF() float64 { return basePlayAreaOffsetY * g.scale() }
 
 func (g *UnoGame) startGame(mode GameMode) {
 	if mode == ModeAI {

@@ -39,16 +39,34 @@ var menuButtons = []MenuButton{
 func (g *UnoGame) updateMenu() {
 	mx, my := ebiten.CursorPosition()
 
-	// Calculate button positions
-	totalHeight := len(menuButtons)*menuButtonHeight + (len(menuButtons)-1)*menuButtonGap
-	startY := (g.screenHeight - totalHeight) / 2
+	// Calculate button dimensions (scale for small screens)
+	btnWidth := menuButtonWidth
+	btnHeight := menuButtonHeight
+	btnGap := menuButtonGap
+	if g.screenWidth < 600 {
+		btnWidth = g.screenWidth - 40
+		btnHeight = 50
+		btnGap = 15
+	}
+
+	// Calculate layout (must match drawMenu)
+	totalBtnHeight := len(menuButtons)*btnHeight + (len(menuButtons)-1)*btnGap
+	titleHeight := 100
+	titleGap := 40
+	totalContentHeight := titleHeight + titleGap + totalBtnHeight
+
+	contentStartY := (g.screenHeight - totalContentHeight) / 2
+	if contentStartY < 20 {
+		contentStartY = 20
+	}
+	startY := contentStartY + titleHeight + titleGap
 
 	for i, btn := range menuButtons {
-		btnX := (g.screenWidth - menuButtonWidth) / 2
-		btnY := startY + i*(menuButtonHeight+menuButtonGap)
+		btnX := (g.screenWidth - btnWidth) / 2
+		btnY := startY + i*(btnHeight+btnGap)
 
-		if mx >= btnX && mx < btnX+menuButtonWidth &&
-			my >= btnY && my < btnY+menuButtonHeight {
+		if mx >= btnX && mx < btnX+btnWidth &&
+			my >= btnY && my < btnY+btnHeight {
 			if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 				g.startGame(btn.Mode)
 			}
@@ -60,35 +78,58 @@ func (g *UnoGame) drawMenu(screen *ebiten.Image) {
 	// Dark background
 	screen.Fill(color.RGBA{20, 20, 30, 255})
 
+	// Calculate button dimensions (scale for small screens)
+	btnWidth := menuButtonWidth
+	btnHeight := menuButtonHeight
+	btnGap := menuButtonGap
+	if g.screenWidth < 600 {
+		btnWidth = g.screenWidth - 40
+		btnHeight = 50
+		btnGap = 15
+	}
+
+	// Calculate total content height (title + gap + buttons)
+	totalBtnHeight := len(menuButtons)*btnHeight + (len(menuButtons)-1)*btnGap
+	titleHeight := 100 // approximate title height
+	titleGap := 40
+	totalContentHeight := titleHeight + titleGap + totalBtnHeight
+
+	// Start Y so content is vertically centered
+	contentStartY := (g.screenHeight - totalContentHeight) / 2
+	if contentStartY < 20 {
+		contentStartY = 20
+	}
+
 	// Title
 	title := "UNO"
 	titleFace := getMenuTitleFace()
 	if titleFace != nil {
 		tw, th := text.Measure(title, titleFace, 0)
 		titleX := (float64(g.screenWidth) - tw) / 2
-		titleY := float64(g.screenHeight)/4 - th/2
+		titleY := float64(contentStartY)
 
 		// Draw title with gold color
 		op := &text.DrawOptions{}
 		op.GeoM.Translate(titleX, titleY)
 		op.ColorScale.ScaleWithColor(color.RGBA{255, 215, 0, 255})
 		text.Draw(screen, title, titleFace, op)
+
+		titleHeight = int(th)
 	}
 
-	// Buttons
+	// Buttons (positioned below title)
 	mx, my := ebiten.CursorPosition()
-	totalHeight := len(menuButtons)*menuButtonHeight + (len(menuButtons)-1)*menuButtonGap
-	startY := (g.screenHeight - totalHeight) / 2
+	startY := contentStartY + titleHeight + titleGap
 
 	for i, btn := range menuButtons {
-		btnX := (g.screenWidth - menuButtonWidth) / 2
-		btnY := startY + i*(menuButtonHeight+menuButtonGap)
+		btnX := (g.screenWidth - btnWidth) / 2
+		btnY := startY + i*(btnHeight+btnGap)
 
 		// Check hover
-		hovered := mx >= btnX && mx < btnX+menuButtonWidth &&
-			my >= btnY && my < btnY+menuButtonHeight
+		hovered := mx >= btnX && mx < btnX+btnWidth &&
+			my >= btnY && my < btnY+btnHeight
 
-		drawMenuButton(screen, btnX, btnY, menuButtonWidth, menuButtonHeight, btn.Label, hovered)
+		drawMenuButton(screen, btnX, btnY, btnWidth, btnHeight, btn.Label, hovered)
 	}
 }
 

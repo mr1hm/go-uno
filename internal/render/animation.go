@@ -49,8 +49,13 @@ const (
 // updateDrawAnimations advances all draw animations and removes completed ones
 func (g *UnoGame) updateDrawAnimations() {
 	remaining := make([]drawAnimation, 0, len(g.drawAnims))
-	drawPileX := float64(g.screenWidth/2 - CardWidth - 20)
-	drawPileY := float64(g.screenHeight/2 - CardHeight/2 + PlayAreaOffsetY)
+	scale := g.scale()
+	cardW := g.cardWidthF()
+	cardH := g.cardHeightF()
+	offsetY := g.playAreaOffsetYF()
+
+	drawPileX := float64(g.screenWidth/2) - cardW - 20*scale
+	drawPileY := float64(g.screenHeight/2) - cardH/2 + offsetY
 
 	for _, anim := range g.drawAnims {
 		anim.progress += drawAnimSpeed
@@ -78,29 +83,34 @@ func (g *UnoGame) startDrawAnimation(playerIndex int) {
 // startDrawAnimationWithDelay starts a draw animation with optional delay (negative startProgress)
 func (g *UnoGame) startDrawAnimationWithDelay(playerIndex int, startProgress float64) {
 	var targetX, targetY float64
+	scale := g.scale()
+	cardW := g.cardWidthF()
+	cardH := g.cardHeightF()
+	cardGap := g.cardGapF()
+	offsetY := g.playAreaOffsetYF()
 
 	if playerIndex == g.playerIndex {
 		// Animate to player's hand
 		player := g.state.Players[g.playerIndex]
-		handY := g.screenHeight - CardHeight - 40
-		totalWidth := len(player.Hand)*CardGap + CardWidth
-		startX := (g.screenWidth - totalWidth) / 2
-		targetX = float64(startX + (len(player.Hand)-1)*CardGap)
-		targetY = float64(handY)
+		handY := float64(g.screenHeight) - cardH - 40*scale
+		totalWidth := float64(len(player.Hand))*cardGap + cardW
+		startX := (float64(g.screenWidth) - totalWidth) / 2
+		targetX = startX + float64(len(player.Hand)-1)*cardGap
+		targetY = handY
 	} else {
 		// Animate to opponent's position
 		switch playerIndex {
 		case 1:
-			targetX, targetY = 50, float64(g.screenHeight/2)
+			targetX, targetY = 50*scale, float64(g.screenHeight/2)
 		case 2:
-			targetX, targetY = float64(g.screenWidth/2-50), 50
+			targetX, targetY = float64(g.screenWidth/2)-50*scale, 50*scale
 		case 3:
-			targetX, targetY = float64(g.screenWidth-150), float64(g.screenHeight/2)
+			targetX, targetY = float64(g.screenWidth)-150*scale, float64(g.screenHeight/2)
 		}
 	}
 
-	drawPileX := float64(g.screenWidth/2 - CardWidth - 20)
-	drawPileY := float64(g.screenHeight/2 - CardHeight/2 + PlayAreaOffsetY)
+	drawPileX := float64(g.screenWidth/2) - cardW - 20*scale
+	drawPileY := float64(g.screenHeight/2) - cardH/2 + offsetY
 
 	g.drawAnims = append(g.drawAnims, drawAnimation{
 		targetPlayer: playerIndex,
@@ -116,7 +126,7 @@ func (g *UnoGame) startDrawAnimationWithDelay(playerIndex int, startProgress flo
 func (g *UnoGame) drawDrawAnimations(screen *ebiten.Image) {
 	for _, anim := range g.drawAnims {
 		if anim.progress > 0 { // Only draw when animation has started
-			DrawCardBack(screen, anim.x, anim.y)
+			g.drawCardBackScaled(screen, anim.x, anim.y)
 		}
 	}
 }
@@ -173,28 +183,31 @@ const (
 // startPlayAnimation starts a card play animation from player to discard pile
 func (g *UnoGame) startPlayAnimation(playerIndex int, card game.Card) {
 	var startX, startY float64
+	scale := g.scale()
+	cardH := g.cardHeightF()
+	offsetY := g.playAreaOffsetYF()
 
 	// Get start position based on player
 	if playerIndex == g.playerIndex {
 		startX = float64(g.screenWidth) / 2
-		startY = float64(g.screenHeight) - CardHeight - 40
+		startY = float64(g.screenHeight) - cardH - 40*scale
 	} else {
 		switch playerIndex {
 		case 1: // Left
-			startX = 120
-			startY = float64(g.screenHeight)/2 + float64(PlayAreaOffsetY)
+			startX = 120 * scale
+			startY = float64(g.screenHeight)/2 + offsetY
 		case 2: // Top
 			startX = float64(g.screenWidth) / 2
-			startY = 100
+			startY = 100 * scale
 		case 3: // Right
-			startX = float64(g.screenWidth) - 120
-			startY = float64(g.screenHeight)/2 + float64(PlayAreaOffsetY)
+			startX = float64(g.screenWidth) - 120*scale
+			startY = float64(g.screenHeight)/2 + offsetY
 		}
 	}
 
 	// Target is the discard pile
-	targetX := float64(g.screenWidth/2 + 20)
-	targetY := float64(g.screenHeight/2 - CardHeight/2 + PlayAreaOffsetY)
+	targetX := float64(g.screenWidth/2) + 20*scale
+	targetY := float64(g.screenHeight/2) - cardH/2 + offsetY
 
 	g.playAnims = append(g.playAnims, playAnimation{
 		fromPlayer: playerIndex,
@@ -229,7 +242,7 @@ func (g *UnoGame) updatePlayAnimations() {
 // drawPlayAnimations renders all active play animations
 func (g *UnoGame) drawPlayAnimations(screen *ebiten.Image) {
 	for _, anim := range g.playAnims {
-		DrawCard(screen, anim.card, anim.x, anim.y, false)
+		g.drawCardScaled(screen, anim.card, anim.x, anim.y, false)
 	}
 }
 
