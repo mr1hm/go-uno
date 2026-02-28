@@ -45,10 +45,12 @@ type UnoGame struct {
 	caughtPlayerName  string // Name of player who got caught
 	caughtByName      string // Name of player who caught them
 	// Announcement state
-	announcement      string  // Current announcement text
-	announcementTimer int     // Frames remaining
-	announcementFade  float64 // Current opacity (0-1)
-	announcementPhase int     // 0=fade in, 1=hold, 2=fade out
+	announcement        string  // Current announcement text
+	announcementTimer   int     // Frames remaining
+	announcementFade    float64 // Current opacity (0-1)
+	announcementPhase   int     // 0=fade in, 1=hold, 2=fade out
+	announcementPlayer  int     // Index of player who triggered announcement (-1 for self/current viewer)
+	announcementFailure bool    // True if this is a failure/penalty announcement
 }
 
 func NewUnoGame(playerNames []string) *UnoGame {

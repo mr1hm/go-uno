@@ -187,13 +187,16 @@ func (g *UnoGame) drawPlayerHand(screen *ebiten.Image) {
 	if isMyTurn {
 		label = ">> " + label + " <<"
 	}
-	if player.HasCalledUno && player.HandSize() <= 2 {
-		label += " UNO!"
-	}
 	// Center the label
 	labelX := float64(g.screenWidth) / 2
 	labelY := float64(g.screenHeight) - CardHeight - 70
 	DrawLabel(screen, label, labelX-float64(len(label)*5), labelY, "normal")
+
+	// Draw fan-style UNO! underneath player name if they've called it
+	if player.HasCalledUno && player.HandSize() <= 2 {
+		unoY := labelY + 30 // Below the name
+		DrawFanText(screen, "UNO!", labelX, unoY, 80, 0.8) // Larger radius and angle for spacing
+	}
 }
 
 func (g *UnoGame) drawOpponents(screen *ebiten.Image) {
@@ -217,12 +220,17 @@ func (g *UnoGame) drawOpponents(screen *ebiten.Image) {
 		var baseRotation float64
 		var labelX, labelY int
 
+		// Common offsets for symmetric positioning
+		sideMargin := 120                                          // Distance from edge for card anchor
+		labelMargin := 20                                          // Distance from edge for labels
+		sideY := float64(g.screenHeight)/2 + float64(PlayAreaOffsetY)
+
 		switch i {
 		case 1: // Left side - fan facing right
-			anchorX = 120
-			anchorY = float64(g.screenHeight)/2 + float64(PlayAreaOffsetY)
+			anchorX = float64(sideMargin)
+			anchorY = sideY
 			baseRotation = math.Pi / 2
-			labelX = 20
+			labelX = labelMargin
 			labelY = g.screenHeight/2 + PlayAreaOffsetY - 80
 		case 2: // Top - fan facing down
 			anchorX = float64(g.screenWidth) / 2
@@ -231,10 +239,10 @@ func (g *UnoGame) drawOpponents(screen *ebiten.Image) {
 			labelX = g.screenWidth/2 - 40
 			labelY = 15
 		case 3: // Right side - fan facing left
-			anchorX = float64(g.screenWidth) - 120
-			anchorY = float64(g.screenHeight)/2 + float64(PlayAreaOffsetY)
+			anchorX = float64(g.screenWidth - sideMargin)
+			anchorY = sideY
 			baseRotation = -math.Pi / 2
-			labelX = g.screenWidth - 100
+			labelX = g.screenWidth - labelMargin // Mirror of left side (DrawLabelRotated centers text)
 			labelY = g.screenHeight/2 + PlayAreaOffsetY - 80
 		}
 
@@ -270,10 +278,16 @@ func (g *UnoGame) drawOpponents(screen *ebiten.Image) {
 			indicator = " <<"
 		}
 		label := fmt.Sprintf("%s (%d)%s", player.Name, player.HandSize(), indicator)
-		if player.HasCalledUno && player.HandSize() <= 2 {
-			label += " UNO!"
-		}
 		DrawLabelRotated(screen, label, float64(labelX), float64(labelY), baseRotation)
+
+		// Draw fan-style UNO! text near the player if they've called it
+		if player.HasCalledUno && player.HandSize() <= 2 {
+			// Position UNO! text relative to label, offset perpendicular to rotation
+			unoOffsetDist := 35.0
+			unoX := float64(labelX) + unoOffsetDist*math.Cos(baseRotation+math.Pi/2)
+			unoY := float64(labelY) + unoOffsetDist*math.Sin(baseRotation+math.Pi/2)
+			DrawFanTextRotated(screen, "UNO!", unoX, unoY, 60, 0.6, baseRotation) // Larger radius and angle
+		}
 	}
 }
 

@@ -91,18 +91,18 @@ func (g *UnoGame) handleGlobalButtons() {
 	unoX := discardX + CardWidth + 15
 	unoY := discardY + CardHeight/2 - 20
 	if mx >= unoX && mx < unoX+80 && my >= unoY && my < unoY+40 {
-		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) && !g.unoClickedThisTurn {
+		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) && !g.unoClickedThisTurn && !player.HasCalledUno {
 			g.unoClickedThisTurn = true
 			// Always attempt to call UNO - game logic handles penalties
 			if err := g.state.CallUno(player.ID); err != nil {
 				g.message = "False UNO! +2 cards"
-				g.ShowAnnouncement("FALSE UNO! +2")
+				g.ShowAnnouncement(AnnouncementUNO, g.playerIndex, true)
 			} else if player.HandSize() == 1 {
 				g.message = "Called UNO! (just in time)"
-				g.ShowAnnouncement("UNO!")
+				g.ShowAnnouncement(AnnouncementUNO, g.playerIndex, false)
 			} else {
 				g.message = "Called UNO!"
-				g.ShowAnnouncement("UNO!")
+				g.ShowAnnouncement(AnnouncementUNO, g.playerIndex, false)
 			}
 		}
 	}
@@ -126,7 +126,7 @@ func (g *UnoGame) handleGlobalButtons() {
 				// Valid challenge - target draws 2
 				if err := g.state.ChallengeUno(player.ID, vulnerableTarget.ID); err == nil {
 					g.message = fmt.Sprintf("Caught %s! +2 cards", vulnerableTarget.Name)
-					g.ShowAnnouncement(fmt.Sprintf("CAUGHT %s!", vulnerableTarget.Name))
+					g.ShowAnnouncement(AnnouncementFalseCatch, g.playerIndex, false)
 					g.caughtPopup = 120
 					g.caughtPlayerName = vulnerableTarget.Name
 					g.caughtByName = player.Name
@@ -135,7 +135,7 @@ func (g *UnoGame) handleGlobalButtons() {
 				// False challenge - challenger draws 2
 				g.state.PenalizePlayer(player.ID, 2)
 				g.message = "False challenge! +2 cards"
-				g.ShowAnnouncement("FALSE CATCH! +2")
+				g.ShowAnnouncement(AnnouncementFalseCatch, g.playerIndex, true)
 			}
 			// Clear any active challenge window
 			g.challengeWindow = 0
