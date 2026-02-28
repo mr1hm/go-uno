@@ -23,6 +23,11 @@ func DrawCard(screen *ebiten.Image, card game.Card, x, y float64, highlight bool
 
 // DrawCardBack draws a face-down card using sprite
 func DrawCardBack(screen *ebiten.Image, x, y float64) {
+	DrawCardBackRotated(screen, x, y, 0)
+}
+
+// DrawCardBackRotated draws a face-down card with rotation (radians)
+func DrawCardBackRotated(screen *ebiten.Image, x, y, rotation float64) {
 	sprite := GetCardBackSprite()
 	if sprite == nil {
 		// Fallback
@@ -35,7 +40,25 @@ func DrawCardBack(screen *ebiten.Image, x, y float64) {
 	}
 
 	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(x, y)
+	// Rotate around center: translate to origin, rotate, translate back
+	op.GeoM.Translate(-CardWidth/2, -CardHeight/2)
+	op.GeoM.Rotate(rotation)
+	op.GeoM.Translate(x+CardWidth/2, y+CardHeight/2)
+	screen.DrawImage(sprite, op)
+}
+
+// DrawCardRotated draws a card with rotation (radians)
+func DrawCardRotated(screen *ebiten.Image, card game.Card, x, y, rotation float64) {
+	sprite := GetCardSprite(card)
+	if sprite == nil {
+		drawFallbackCard(screen, card, x, y)
+		return
+	}
+
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(-CardWidth/2, -CardHeight/2)
+	op.GeoM.Rotate(rotation)
+	op.GeoM.Translate(x+CardWidth/2, y+CardHeight/2)
 	screen.DrawImage(sprite, op)
 }
 
