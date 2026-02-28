@@ -136,9 +136,13 @@ func (g *UnoGame) drawPlayerHand(screen *ebiten.Image) {
 	// Update card lift animations
 	g.updateCardLiftAnimations(visibleCards)
 
+	// Store hovered card info for drawing on top (z-index via draw order)
+	var hoveredCardX, hoveredCardY, hoveredAngle float64
+	var hoveredCard *game.Card
+
 	for i := range visibleCards {
 		card := player.Hand[i]
-		// Skip drawing card in hand if it's being dragged
+		// Skip drawing card if it's being dragged
 		if g.dragging && i == g.dragCardIndex {
 			continue
 		}
@@ -156,7 +160,21 @@ func (g *UnoGame) drawPlayerHand(screen *ebiten.Image) {
 		x := centerX + arcRadius*math.Sin(angle) - CardWidth/2
 		y := centerY - arcRadius*math.Cos(angle) - g.cardLiftY[i]
 
+		// If this is the hovered card, save it to draw last (on top)
+		if i == g.selectedCard && !g.dragging {
+			hoveredCard = &card
+			hoveredCardX = x
+			hoveredCardY = y
+			hoveredAngle = angle
+			continue
+		}
+
 		DrawCardRotated(screen, card, x, y, angle)
+	}
+
+	// Draw hovered card last so it appears on top (z-index)
+	if hoveredCard != nil {
+		DrawCardRotated(screen, *hoveredCard, hoveredCardX, hoveredCardY, hoveredAngle)
 	}
 
 	// Draw dragged card on top (follows mouse, no rotation)
