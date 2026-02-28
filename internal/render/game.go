@@ -26,7 +26,12 @@ type UnoGame struct {
 	pendingCard  int  // Card index waiting for color choice
 	screenWidth  int
 	screenHeight int
-	aiDelay      int // Frames to wait before AI acts
+	aiDelay      int       // Frames to wait before AI acts
+	cardLiftY    []float64 // Current lift offset for each card (for smooth animation)
+	// Drag state
+	dragging      bool
+	dragCardIndex int
+	dragX, dragY  float64
 }
 
 func NewUnoGame(playerNames []string) *UnoGame {
@@ -91,7 +96,45 @@ func (g *UnoGame) handleHumanTurn() {
 	totalWidth := len(player.Hand)*CardGap + CardWidth
 	startX := (g.screenWidth - totalWidth) / 2
 
-	// Check card hover/click - iterate in REVERSE so topmost (rightmost) card is checked first
+	// Discard pile position (drop target)
+	discardX := g.screenWidth/2 + 20
+	discardY := g.screenHeight/2 - CardHeight/2
+
+	// Handle dragging
+	if g.dragging {
+		g.dragX = float64(mx) - CardWidth/2
+		g.dragY = float64(my) - CardHeight/2
+
+		// Check for mouse release
+		if inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft) {
+			g.dragging = false
+
+			// Check if dropped on discard pile
+			if mx >= discardX-30 && mx < discardX+CardWidth+30 &&
+				my >= discardY-30 && my < discardY+CardHeight+30 {
+
+				card := player.Hand[g.dragCardIndex]
+
+				// Wild card needs color picker
+				if card.IsWild() {
+					g.colorPicker = true
+					g.pendingCard = g.dragCardIndex
+					return
+				}
+
+				// Try to play the card
+				if err := g.state.PlayCard(player.ID, g.dragCardIndex, g.state.ChosenColor); err != nil {
+					g.message = err.Error()
+				} else {
+					g.message = fmt.Sprintf("Played %s", card)
+				}
+			}
+			g.dragCardIndex = -1
+		}
+		return
+	}
+
+	// Check card hover/drag start - iterate in REVERSE so topmost (rightmost) card is checked first
 	liftAmount := 30
 	g.selectedCard = -1
 	for i := len(player.Hand) - 1; i >= 0; i-- {
@@ -100,22 +143,12 @@ func (g *UnoGame) handleHumanTurn() {
 		if mx >= cardX && mx < cardX+CardWidth && my >= handY-liftAmount && my < handY+CardHeight {
 			g.selectedCard = i
 
+			// Start dragging on mouse down
 			if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
-				card := player.Hand[i]
-
-				// Wild card needs color picker
-				if card.IsWild() {
-					g.colorPicker = true
-					g.pendingCard = i
-					return
-				}
-
-				// Try to play the card
-				if err := g.state.PlayCard(player.ID, i, g.state.ChosenColor); err != nil {
-					g.message = err.Error()
-				} else {
-					g.message = fmt.Sprintf("Played %s", card)
-				}
+				g.dragging = true
+				g.dragCardIndex = i
+				g.dragX = float64(mx) - CardWidth/2
+				g.dragY = float64(my) - CardHeight/2
 				return
 			}
 			break // Stop after first (topmost) match for hover
@@ -296,24 +329,50 @@ func (g *UnoGame) drawPlayerHand(screen *ebiten.Image) {
 	startX := (g.screenWidth - totalWidth) / 2
 	isMyTurn := g.state.CurrentPlayer == g.playerIndex
 
-	// Draw subtle glow behind hand when it's your turn
-	if isMyTurn {
-		highlightPadding := 10
-		highlight := ebiten.NewImage(totalWidth+highlightPadding*2, CardHeight+highlightPadding*2+30)
-		highlight.Fill(color.RGBA{255, 255, 255, 25})
-		op := &ebiten.DrawImageOptions{}
-		op.GeoM.Translate(float64(startX-highlightPadding), float64(handY-highlightPadding-30))
-		screen.DrawImage(highlight, op)
+	// Ensure cardLiftY slice matches hand size
+	for len(g.cardLiftY) < len(player.Hand) {
+		g.cardLiftY = append(g.cardLiftY, 0)
+	}
+	if len(g.cardLiftY) > len(player.Hand) {
+		g.cardLiftY = g.cardLiftY[:len(player.Hand)]
+	}
+
+	// Animate card lift
+	liftSpeed := 4.0
+	targetLift := 30.0
+	for i := range player.Hand {
+		if i == g.selectedCard {
+			// Lift up
+			if g.cardLiftY[i] < targetLift {
+				g.cardLiftY[i] += liftSpeed
+				if g.cardLiftY[i] > targetLift {
+					g.cardLiftY[i] = targetLift
+				}
+			}
+		} else {
+			// Lower down
+			if g.cardLiftY[i] > 0 {
+				g.cardLiftY[i] -= liftSpeed
+				if g.cardLiftY[i] < 0 {
+					g.cardLiftY[i] = 0
+				}
+			}
+		}
 	}
 
 	for i, card := range player.Hand {
-		x := float64(startX + i*CardGap)
-		y := float64(handY)
-		isSelected := i == g.selectedCard
-		if isSelected {
-			y -= 30 // Lift selected card more
+		// Skip drawing card in hand if it's being dragged
+		if g.dragging && i == g.dragCardIndex {
+			continue
 		}
-		DrawCard(screen, card, x, y, isMyTurn && isSelected)
+		x := float64(startX + i*CardGap)
+		y := float64(handY) - g.cardLiftY[i]
+		DrawCard(screen, card, x, y, false)
+	}
+
+	// Draw dragged card on top (follows mouse)
+	if g.dragging && g.dragCardIndex >= 0 && g.dragCardIndex < len(player.Hand) {
+		DrawCard(screen, player.Hand[g.dragCardIndex], g.dragX, g.dragY, false)
 	}
 
 	// Player name and card count
@@ -358,19 +417,44 @@ func (g *UnoGame) drawOpponents(screen *ebiten.Image) {
 }
 
 func (g *UnoGame) drawUI(screen *ebiten.Image) {
-	// Turn indicator - prominent banner when it's your turn
+	// Turn indicator
 	currentPlayer := g.state.CurrentPlayerObj()
 	if g.state.CurrentPlayer == g.playerIndex {
-		// Draw "YOUR TURN" banner
-		bannerHeight := 40
-		banner := ebiten.NewImage(g.screenWidth, bannerHeight)
-		banner.Fill(color.RGBA{0, 100, 0, 200})
+		// Draw centered "YOUR TURN" pill banner
+		bannerWidth := 280
+		bannerHeight := 36
+		bannerX := (g.screenWidth - bannerWidth) / 2
+		bannerY := 15
+
+		// Outer glow
+		glow := ebiten.NewImage(bannerWidth+8, bannerHeight+8)
+		glow.Fill(color.RGBA{255, 200, 0, 80})
+		glowOp := &ebiten.DrawImageOptions{}
+		glowOp.GeoM.Translate(float64(bannerX-4), float64(bannerY-4))
+		screen.DrawImage(glow, glowOp)
+
+		// Main banner (red UNO style)
+		banner := ebiten.NewImage(bannerWidth, bannerHeight)
+		banner.Fill(color.RGBA{200, 30, 30, 240})
 		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Translate(float64(bannerX), float64(bannerY))
 		screen.DrawImage(banner, op)
-		ebitenutil.DebugPrintAt(screen, ">>> YOUR TURN - Click a card to play! <<<", g.screenWidth/2-150, 12)
+
+		// Text centered
+		ebitenutil.DebugPrintAt(screen, "YOUR TURN", bannerX+100, bannerY+10)
 	} else {
-		turnText := fmt.Sprintf("Waiting for %s...", currentPlayer.Name)
-		ebitenutil.DebugPrintAt(screen, turnText, 10, 10)
+		// Smaller waiting indicator
+		waitText := fmt.Sprintf("Waiting for %s...", currentPlayer.Name)
+		bannerWidth := len(waitText)*7 + 20
+		bannerX := (g.screenWidth - bannerWidth) / 2
+
+		banner := ebiten.NewImage(bannerWidth, 28)
+		banner.Fill(color.RGBA{50, 50, 50, 180})
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Translate(float64(bannerX), 15)
+		screen.DrawImage(banner, op)
+
+		ebitenutil.DebugPrintAt(screen, waitText, bannerX+10, 22)
 	}
 
 	// Direction indicator
