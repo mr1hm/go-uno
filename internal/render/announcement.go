@@ -10,18 +10,70 @@ import (
 
 var (
 	announcementFace *text.GoTextFace
+	labelFace        *text.GoTextFace
+	labelFaceSmall   *text.GoTextFace
+	fontSource       *text.GoTextFaceSource
 )
 
 func init() {
 	// Load the Go Bold font (embedded in Go)
-	source, err := text.NewGoTextFaceSource(bytes.NewReader(gobold.TTF))
+	var err error
+	fontSource, err = text.NewGoTextFaceSource(bytes.NewReader(gobold.TTF))
 	if err != nil {
 		panic(err)
 	}
 	announcementFace = &text.GoTextFace{
-		Source: source,
+		Source: fontSource,
 		Size:   48,
 	}
+	labelFace = &text.GoTextFace{
+		Source: fontSource,
+		Size:   20,
+	}
+	labelFaceSmall = &text.GoTextFace{
+		Source: fontSource,
+		Size:   16,
+	}
+}
+
+// DrawLabel draws a styled label with shadow at the given position
+func DrawLabel(screen *ebiten.Image, label string, x, y float64, size string) {
+	face := labelFace
+	if size == "small" {
+		face = labelFaceSmall
+	}
+
+	// Draw shadow
+	shadowOp := &text.DrawOptions{}
+	shadowOp.GeoM.Translate(x+2, y+2)
+	shadowOp.ColorScale.Scale(0, 0, 0, 0.7)
+	text.Draw(screen, label, face, shadowOp)
+
+	// Draw main text (white)
+	op := &text.DrawOptions{}
+	op.GeoM.Translate(x, y)
+	text.Draw(screen, label, face, op)
+}
+
+// DrawLabelRotated draws a styled label with rotation
+func DrawLabelRotated(screen *ebiten.Image, label string, x, y float64, rotation float64) {
+	// Measure text
+	w, h := text.Measure(label, labelFace, 0)
+
+	// Draw shadow
+	shadowOp := &text.DrawOptions{}
+	shadowOp.GeoM.Translate(-w/2, -h/2)
+	shadowOp.GeoM.Rotate(rotation)
+	shadowOp.GeoM.Translate(x+2, y+2)
+	shadowOp.ColorScale.Scale(0, 0, 0, 0.7)
+	text.Draw(screen, label, labelFace, shadowOp)
+
+	// Draw main text
+	op := &text.DrawOptions{}
+	op.GeoM.Translate(-w/2, -h/2)
+	op.GeoM.Rotate(rotation)
+	op.GeoM.Translate(x, y)
+	text.Draw(screen, label, labelFace, op)
 }
 
 const (

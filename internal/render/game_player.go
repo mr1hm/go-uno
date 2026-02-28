@@ -2,6 +2,7 @@ package render
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
@@ -13,20 +14,66 @@ func (g *UnoGame) handleCardHover() {
 	player := g.state.Players[g.playerIndex]
 	mx, my := ebiten.CursorPosition()
 
-	handY := g.screenHeight - CardHeight - 40
-	totalWidth := len(player.Hand)*CardGap + CardWidth
-	startX := (g.screenWidth - totalWidth) / 2
-	liftAmount := 30
-
 	// Don't update hover during drag
 	if g.dragging {
 		return
 	}
 
+	// Fan parameters (must match drawPlayerHand)
+	animatingCount := g.CountAnimatingCards(g.playerIndex)
+	visibleCards := len(player.Hand) - animatingCount
+	if visibleCards == 0 {
+		g.selectedCard = -1
+		return
+	}
+
+	arcRadius := 800.0
+	centerX := float64(g.screenWidth) / 2
+	centerY := float64(g.screenHeight) + arcRadius - CardHeight - 20 // Must match drawPlayerHand
+
+	// Adjust fan angle based on number of cards (must match drawPlayerHand)
+	var actualFanAngle float64
+	switch {
+	case visibleCards <= 1:
+		actualFanAngle = 0
+	case visibleCards <= 3:
+		actualFanAngle = 0.15
+	case visibleCards <= 5:
+		actualFanAngle = 0.25
+	case visibleCards <= 7:
+		actualFanAngle = 0.4
+	default:
+		actualFanAngle = min(0.6, 0.4+float64(visibleCards-7)*0.03)
+	}
+
+	// Find card closest to mouse (checking from top card to bottom for overlap priority)
 	g.selectedCard = -1
-	for i := len(player.Hand) - 1; i >= 0; i-- {
-		cardX := startX + i*CardGap
-		if mx >= cardX && mx < cardX+CardWidth && my >= handY-liftAmount && my < handY+CardHeight {
+	for i := visibleCards - 1; i >= 0; i-- {
+		var angle float64
+		if visibleCards == 1 {
+			angle = 0
+		} else {
+			t := float64(i) / float64(visibleCards-1)
+			angle = (t - 0.5) * actualFanAngle
+		}
+
+		// Calculate card center position
+		cardCenterX := centerX + arcRadius*math.Sin(angle)
+		cardCenterY := centerY - arcRadius*math.Cos(angle)
+
+		// Check if mouse is within card bounds (rough rectangular check)
+		dx := float64(mx) - cardCenterX
+		dy := float64(my) - cardCenterY
+
+		// Rotate mouse position to card's local space
+		cos := math.Cos(-angle)
+		sin := math.Sin(-angle)
+		localX := dx*cos - dy*sin
+		localY := dx*sin + dy*cos
+
+		// Check if within card bounds
+		if localX >= -CardWidth/2 && localX <= CardWidth/2 &&
+			localY >= -CardHeight/2 && localY <= CardHeight/2+30 { // +30 for lift area
 			g.selectedCard = i
 			break
 		}

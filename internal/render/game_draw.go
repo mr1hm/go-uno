@@ -103,14 +103,35 @@ func (g *UnoGame) drawDrawPile(screen *ebiten.Image) {
 
 func (g *UnoGame) drawPlayerHand(screen *ebiten.Image) {
 	player := g.state.Players[g.playerIndex]
-	handY := g.screenHeight - CardHeight - 40
-	totalWidth := len(player.Hand)*CardGap + CardWidth
-	startX := (g.screenWidth - totalWidth) / 2
 	isMyTurn := g.state.CurrentPlayer == g.playerIndex
 
 	// Hide cards that are still animating (they're at the end of the hand)
 	animatingCount := g.CountAnimatingCards(g.playerIndex)
 	visibleCards := len(player.Hand) - animatingCount
+
+	if visibleCards == 0 {
+		return
+	}
+
+	// Fan parameters
+	arcRadius := 800.0 // Radius of the arc (larger = flatter)
+	centerX := float64(g.screenWidth) / 2
+	centerY := float64(g.screenHeight) + arcRadius - CardHeight - 20 // Push hand to bottom edge
+
+	// Adjust fan angle based on number of cards (collapse inward with fewer cards)
+	var actualFanAngle float64
+	switch {
+	case visibleCards <= 1:
+		actualFanAngle = 0
+	case visibleCards <= 3:
+		actualFanAngle = 0.15
+	case visibleCards <= 5:
+		actualFanAngle = 0.25
+	case visibleCards <= 7:
+		actualFanAngle = 0.4
+	default:
+		actualFanAngle = min(0.6, 0.4+float64(visibleCards-7)*0.03)
+	}
 
 	// Update card lift animations
 	g.updateCardLiftAnimations(visibleCards)
@@ -121,25 +142,40 @@ func (g *UnoGame) drawPlayerHand(screen *ebiten.Image) {
 		if g.dragging && i == g.dragCardIndex {
 			continue
 		}
-		x := float64(startX + i*CardGap)
-		y := float64(handY) - g.cardLiftY[i]
-		DrawCard(screen, card, x, y, false)
+
+		// Calculate angle for this card (-fanAngle/2 to +fanAngle/2)
+		var angle float64
+		if visibleCards == 1 {
+			angle = 0
+		} else {
+			t := float64(i) / float64(visibleCards-1) // 0 to 1
+			angle = (t - 0.5) * actualFanAngle
+		}
+
+		// Calculate position on arc
+		x := centerX + arcRadius*math.Sin(angle) - CardWidth/2
+		y := centerY - arcRadius*math.Cos(angle) - g.cardLiftY[i]
+
+		DrawCardRotated(screen, card, x, y, angle)
 	}
 
-	// Draw dragged card on top (follows mouse)
+	// Draw dragged card on top (follows mouse, no rotation)
 	if g.dragging && g.dragCardIndex >= 0 && g.dragCardIndex < len(player.Hand) {
 		DrawCard(screen, player.Hand[g.dragCardIndex], g.dragX, g.dragY, false)
 	}
 
-	// Player name and card count
-	label := fmt.Sprintf("%s (%d cards)", player.Name, len(player.Hand))
+	// Player name and card count (centered above hand)
+	label := fmt.Sprintf("%s (%d)", player.Name, len(player.Hand))
 	if isMyTurn {
 		label = ">> " + label + " <<"
 	}
 	if player.HasCalledUno && player.HandSize() <= 2 {
-		label += " - UNO!"
+		label += " UNO!"
 	}
-	ebitenutil.DebugPrintAt(screen, label, startX, handY-25)
+	// Center the label
+	labelX := float64(g.screenWidth) / 2
+	labelY := float64(g.screenHeight) - CardHeight - 70
+	DrawLabel(screen, label, labelX-float64(len(label)*5), labelY, "normal")
 }
 
 func (g *UnoGame) drawOpponents(screen *ebiten.Image) {
@@ -148,81 +184,78 @@ func (g *UnoGame) drawOpponents(screen *ebiten.Image) {
 			continue
 		}
 
-		// Position opponents around the table with rotation
-		var x, y int
-		var rotation float64
-		var cardGap int
-		var labelOffsetX, labelOffsetY int
+		animatingCount := g.CountAnimatingCards(i)
+		visibleCards := min(player.HandSize()-animatingCount, 10)
+		if visibleCards <= 0 {
+			continue
+		}
+
+		// Fan parameters for opponents
+		fanAngle := 0.25 // Smaller spread for opponents
+		arcRadius := 300.0
+
+		// Position, base rotation, and label position for each opponent
+		var anchorX, anchorY float64
+		var baseRotation float64
+		var labelX, labelY int
 
 		switch i {
-		case 1: // Left side - rotate 90° (cards stack vertically)
-			x = 50
-			y = g.screenHeight/2 - 50
-			rotation = math.Pi / 2 // 90°
-			cardGap = 15
-			labelOffsetX = 0
-			labelOffsetY = -30
-		case 2: // Top - rotate 180° (cards upside down, stack horizontally)
-			// Center cards based on hand size
-			visibleCount := min(player.HandSize()-g.CountAnimatingCards(i), 7)
-			totalWidth := visibleCount*15 + CardWidth
-			x = (g.screenWidth - totalWidth) / 2
-			y = 30
-			rotation = math.Pi // 180°
-			cardGap = 15
-			labelOffsetX = totalWidth / 2
-			labelOffsetY = CardHeight + 10
-		case 3: // Right side - rotate -90° (cards stack vertically)
-			x = g.screenWidth - CardHeight - 20 // Account for rotated card width
-			y = g.screenHeight/2 - 50
-			rotation = -math.Pi / 2 // -90°
-			cardGap = 15
-			labelOffsetX = 0
-			labelOffsetY = -30
+		case 1: // Left side - fan facing right
+			anchorX = 120
+			anchorY = float64(g.screenHeight)/2 + float64(PlayAreaOffsetY)
+			baseRotation = math.Pi / 2
+			labelX = 20
+			labelY = g.screenHeight/2 + PlayAreaOffsetY - 80
+		case 2: // Top - fan facing down
+			anchorX = float64(g.screenWidth) / 2
+			anchorY = 100
+			baseRotation = math.Pi
+			labelX = g.screenWidth/2 - 40
+			labelY = 15
+		case 3: // Right side - fan facing left
+			anchorX = float64(g.screenWidth) - 120
+			anchorY = float64(g.screenHeight)/2 + float64(PlayAreaOffsetY)
+			baseRotation = -math.Pi / 2
+			labelX = g.screenWidth - 100
+			labelY = g.screenHeight/2 + PlayAreaOffsetY - 80
 		}
 
-		// Draw card backs to represent hand (hide animating cards)
-		animatingCount := g.CountAnimatingCards(i)
-		visibleCards := player.HandSize() - animatingCount
-		for j := range min(visibleCards, 7) {
-			var cardX, cardY float64
-			if i == 1 || i == 3 {
-				// Vertical stacking for left/right players
-				cardX = float64(x)
-				cardY = float64(y + j*cardGap)
+		// Draw cards in fan arrangement
+		for j := range visibleCards {
+			var cardAngle float64
+			if visibleCards == 1 {
+				cardAngle = 0
 			} else {
-				// Horizontal stacking for top player
-				cardX = float64(x + j*cardGap)
-				cardY = float64(y)
+				t := float64(j) / float64(visibleCards-1)
+				cardAngle = (t - 0.5) * fanAngle
 			}
-			DrawCardBackRotated(screen, cardX, cardY, rotation)
+
+			totalAngle := baseRotation + cardAngle
+
+			// Position card relative to anchor, fanning outward
+			offsetX := arcRadius * math.Sin(cardAngle)
+			offsetY := -arcRadius * (1 - math.Cos(cardAngle)) * 0.3 // Slight arc
+
+			// Rotate offset by base rotation
+			rotatedOffsetX := offsetX*math.Cos(baseRotation) - offsetY*math.Sin(baseRotation)
+			rotatedOffsetY := offsetX*math.Sin(baseRotation) + offsetY*math.Cos(baseRotation)
+
+			cardX := anchorX + rotatedOffsetX - CardWidth/2
+			cardY := anchorY + rotatedOffsetY - CardHeight/2
+
+			DrawCardBackRotated(screen, cardX, cardY, totalAngle)
 		}
 
+		// Draw rotated label with nice font
 		indicator := ""
 		if g.state.CurrentPlayer == i {
-			indicator = " <--"
+			indicator = " <<"
 		}
 		label := fmt.Sprintf("%s (%d)%s", player.Name, player.HandSize(), indicator)
-
-		// Draw rotated label
-		drawRotatedText(screen, label, x+labelOffsetX, y+labelOffsetY, rotation)
-
-		// Show UNO indicator if player has called UNO (positioned next to cards)
 		if player.HasCalledUno && player.HandSize() <= 2 {
-			var unoX, unoY int
-			switch i {
-			case 1: // Left player - UNO to the right of cards
-				unoX = x + CardHeight + 10
-				unoY = y + 30
-			case 2: // Top player - UNO below cards
-				unoX = x + 60
-				unoY = y + CardHeight + 20
-			case 3: // Right player - UNO to the left of cards
-				unoX = x - 50
-				unoY = y + 30
-			}
-			drawRotatedText(screen, "UNO!", unoX, unoY, rotation)
+			label += " UNO!"
 		}
+		DrawLabelRotated(screen, label, float64(labelX), float64(labelY), baseRotation)
 	}
 }
 
