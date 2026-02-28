@@ -20,11 +20,11 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
-      - name: Build
-        run: go build ./...
+      - name: Test game logic
+        run: go test -race -count=1 -v ./internal/game/...
 
-      - name: Test with race detector
-        run: go test -race -count=1 -v ./...
+      - name: Test server
+        run: go test -race -count=1 -v ./internal/server/...
 
   build-wasm:
     runs-on: ubuntu-latest
