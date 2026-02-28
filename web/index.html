@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UNO</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Discord Client ID will be set by server or environment -->
+    <script>
+        window.DISCORD_CLIENT_ID = '{{DISCORD_CLIENT_ID}}';
+    </script>
+    <script type="module" src="discord.js"></script>
+    <script src="wasm_exec.js"></script>
+    <script>
+        // Wait for Discord SDK to be ready before loading WASM
+        window.addEventListener('discord-ready', () => {
+            const go = new Go();
+            WebAssembly.instantiateStreaming(fetch("uno.wasm"), go.importObject)
+                .then(result => {
+                    go.run(result.instance);
+                })
+                .catch(err => {
+                    console.error("Failed to load WASM:", err);
+                });
+        });
+    </script>
+</body>
+</html>

@@ -16,9 +16,13 @@ const (
 )
 
 type UnoGame struct {
+	mode         GameMode // Menu, Lobby, AI, or Players
 	state        *game.GameState
 	playerIndex  int // Which player is human (0)
 	aiPlayers    []int
+	// Multiplayer
+	network      *NetworkClient
+	lobbyPlayers []string // Players in lobby
 	selectedCard int
 	message      string
 	colorPicker  bool // Show color picker for wild cards
@@ -60,23 +64,80 @@ type UnoGame struct {
 
 func NewUnoGame(playerNames []string) *UnoGame {
 	g := &UnoGame{
-		state:        game.NewGame(playerNames),
+		mode:         ModeMenu,
 		playerIndex:  0,
 		selectedCard: -1,
 		screenWidth:  1280,
 		screenHeight: 720,
 	}
-
-	// Mark AI Players (everyone except player 0)
-	for i := 1; i < len(playerNames); i++ {
-		g.aiPlayers = append(g.aiPlayers, i)
-	}
-
 	return g
 }
 
+func (g *UnoGame) startGame(mode GameMode) {
+	if mode == ModeAI {
+		g.mode = ModeAI
+		playerNames := []string{"You", "CPU 1", "CPU 2", "CPU 3"}
+		g.state = game.NewGame(playerNames)
+		g.selectedCard = -1
+		g.aiPlayers = nil
+		g.lastHandSizes = nil
+		g.drawAnims = nil
+		g.playAnims = nil
+		g.playerActions = nil
+		g.playerActionTimers = nil
+
+		for i := 1; i < len(playerNames); i++ {
+			g.aiPlayers = append(g.aiPlayers, i)
+		}
+	} else {
+		// Multiplayer - go to lobby
+		g.mode = ModeLobby
+		g.network = NewNetworkClient()
+
+		// Get Discord state for room ID and player name
+		discord := GetDiscordState()
+		roomID := discord.InstanceID // All players in same Activity share instanceId
+		playerName := discord.Username
+		if playerName == "" {
+			playerName = "Player"
+		}
+
+		g.lobbyPlayers = []string{playerName}
+
+		// Connect to server
+		wsURL := "ws://" + getHost() + "/ws"
+		if discord.UserID != "" {
+			wsURL += "?id=" + discord.UserID // Use Discord user ID as player ID
+		}
+		g.network.Connect(wsURL)
+		g.network.JoinRoom(roomID, playerName)
+	}
+}
+
+func (g *UnoGame) returnToMenu() {
+	g.mode = ModeMenu
+	if g.network != nil {
+		g.network.Close()
+		g.network = nil
+	}
+	g.state = nil
+	g.lobbyPlayers = nil
+}
+
 func (g *UnoGame) Update() error {
-	g.screenWidth, g.screenHeight = ebiten.WindowSize()
+	// Screen size is set in Layout()
+
+	// Handle menu
+	if g.mode == ModeMenu {
+		g.updateMenu()
+		return nil
+	}
+
+	// Handle lobby
+	if g.mode == ModeLobby {
+		g.updateLobby()
+		return nil
+	}
 
 	// Decrement challenge window
 	if g.challengeWindow > 0 {
@@ -182,6 +243,18 @@ func (g *UnoGame) Update() error {
 }
 
 func (g *UnoGame) Draw(screen *ebiten.Image) {
+	// Draw menu
+	if g.mode == ModeMenu {
+		g.drawMenu(screen)
+		return
+	}
+
+	// Draw lobby
+	if g.mode == ModeLobby {
+		g.drawLobby(screen)
+		return
+	}
+
 	// Draw background
 	if bg := GetBackgroundSprite(); bg != nil {
 		// Scale background to fit screen
@@ -220,5 +293,7 @@ func (g *UnoGame) Draw(screen *ebiten.Image) {
 }
 
 func (g *UnoGame) Layout(outsideWidth, outsideHeight int) (int, int) {
+	g.screenWidth = outsideWidth
+	g.screenHeight = outsideHeight
 	return outsideWidth, outsideHeight
 }

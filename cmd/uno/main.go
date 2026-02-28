@@ -14,6 +14,9 @@ func main() {
 	ebiten.SetWindowTitle("Go Uno")
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 
+	// For WASM, the game will use the canvas size from Layout()
+	// Don't call SetFullscreen - browsers require user gesture
+
 	// 60 TPS for smooth animations
 	ebiten.SetTPS(60)
 
