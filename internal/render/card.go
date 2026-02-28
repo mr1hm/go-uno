@@ -1,41 +1,62 @@
 package render
 
 import (
-	"fmt"
 	"image/color"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 	"github.com/mr1hm/go-uno/internal/game"
 )
 
-// Pre-allocated card images to avoid creating new images every frame
-var (
-	cardImages    = make(map[string]*ebiten.Image)
-	cardBackImage *ebiten.Image
-)
-
-func init() {
-	// Pre-create card back image
-	cardBackImage = ebiten.NewImage(CardWidth, CardHeight)
-	cardBackImage.Fill(color.RGBA{30, 30, 80, 255})
-}
-
-// getCardImage returns a cached card image or creates one
-func getCardImage(card game.Card) *ebiten.Image {
-	key := fmt.Sprintf("%d-%d", card.Color, card.Value)
-	if img, exists := cardImages[key]; exists {
-		return img
+// DrawCard draws a card at the specified position using sprites
+func DrawCard(screen *ebiten.Image, card game.Card, x, y float64, highlight bool) {
+	sprite := GetCardSprite(card)
+	if sprite == nil {
+		// Fallback to colored rectangle if sprite not found
+		drawFallbackCard(screen, card, x, y)
+		return
 	}
 
-	img := ebiten.NewImage(CardWidth, CardHeight)
-	img.Fill(getCardColor(card))
-	cardImages[key] = img
-	return img
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(x, y)
+	screen.DrawImage(sprite, op)
+
+	// Draw highlight border if selected (white glow effect)
+	if highlight {
+		drawRect(screen, int(x)-3, int(y)-3, CardWidth+6, CardHeight+6, color.RGBA{255, 255, 255, 200})
+		drawRect(screen, int(x)-2, int(y)-2, CardWidth+4, CardHeight+4, color.RGBA{255, 255, 255, 255})
+		drawRect(screen, int(x)-1, int(y)-1, CardWidth+2, CardHeight+2, color.RGBA{255, 255, 255, 200})
+	}
 }
 
-// getCardColor returns the RGBA color for a card
+// DrawCardBack draws a face-down card using sprite
+func DrawCardBack(screen *ebiten.Image, x, y float64) {
+	sprite := GetCardBackSprite()
+	if sprite == nil {
+		// Fallback
+		fallback := ebiten.NewImage(CardWidth, CardHeight)
+		fallback.Fill(color.RGBA{30, 30, 80, 255})
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Translate(x, y)
+		screen.DrawImage(fallback, op)
+		return
+	}
+
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(x, y)
+	screen.DrawImage(sprite, op)
+}
+
+// drawFallbackCard draws a simple colored rectangle as fallback
+func drawFallbackCard(screen *ebiten.Image, card game.Card, x, y float64) {
+	fallback := ebiten.NewImage(CardWidth, CardHeight)
+	fallback.Fill(getCardColor(card))
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(x, y)
+	screen.DrawImage(fallback, op)
+}
+
+// getCardColor returns the RGBA color for a card (fallback only)
 func getCardColor(card game.Card) color.RGBA {
 	switch card.Color {
 	case game.ColorRed:
@@ -51,46 +72,11 @@ func getCardColor(card game.Card) color.RGBA {
 	}
 }
 
-// DrawCard draws a card at the specified position
-func DrawCard(screen *ebiten.Image, card game.Card, x, y float64, highlight bool) {
-	img := getCardImage(card)
-
-	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(x, y)
-	screen.DrawImage(img, op)
-
-	// Draw border
-	borderColor := color.RGBA{255, 255, 255, 255}
-	if highlight {
-		borderColor = color.RGBA{255, 255, 0, 255}
-	}
-	drawRect(screen, int(x), int(y), CardWidth, CardHeight, borderColor)
-
-	// Draw card text
-	label := card.Value.String()
-	if card.IsWild() {
-		label = "W"
-		if card.Value == game.ValueWildDrawFour {
-			label = "+4"
-		}
-	}
-	ebitenutil.DebugPrintAt(screen, label, int(x)+CardWidth/2-8, int(y)+CardHeight/2-8)
-}
-
-// DrawCardBack draws a face-down card
-func DrawCardBack(screen *ebiten.Image, x, y float64) {
-	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(x, y)
-	screen.DrawImage(cardBackImage, op)
-
-	drawRect(screen, int(x), int(y), CardWidth, CardHeight, color.RGBA{100, 100, 150, 255})
-}
-
 // drawRect draws a rectangle border (no fill)
 func drawRect(screen *ebiten.Image, x, y, width, height int, c color.RGBA) {
 	fx, fy := float32(x), float32(y)
 	fw, fh := float32(width), float32(height)
-	strokeWidth := float32(1)
+	strokeWidth := float32(2)
 
 	vector.StrokeLine(screen, fx, fy, fx+fw, fy, strokeWidth, c, false)
 	vector.StrokeLine(screen, fx, fy+fh, fx+fw, fy+fh, strokeWidth, c, false)

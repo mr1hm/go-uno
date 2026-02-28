@@ -11,9 +11,9 @@ import (
 )
 
 const (
-	CardWidth  = 80
-	CardHeight = 120
-	CardGap    = 30
+	CardWidth  = 116
+	CardHeight = 168
+	CardGap    = 40
 )
 
 type UnoGame struct {
@@ -241,7 +241,18 @@ func (g *UnoGame) pickAIColor(player *game.Player) game.Color {
 }
 
 func (g *UnoGame) Draw(screen *ebiten.Image) {
-	screen.Fill(color.RGBA{34, 139, 34, 255}) // Green table
+	// Draw background
+	if bg := GetBackgroundSprite(); bg != nil {
+		// Scale background to fit screen
+		bgBounds := bg.Bounds()
+		scaleX := float64(g.screenWidth) / float64(bgBounds.Dx())
+		scaleY := float64(g.screenHeight) / float64(bgBounds.Dy())
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Scale(scaleX, scaleY)
+		screen.DrawImage(bg, op)
+	} else {
+		screen.Fill(color.RGBA{34, 139, 34, 255}) // Fallback green table
+	}
 
 	g.drawDiscardPile(screen)
 	g.drawDrawPile(screen)
@@ -285,13 +296,13 @@ func (g *UnoGame) drawPlayerHand(screen *ebiten.Image) {
 	startX := (g.screenWidth - totalWidth) / 2
 	isMyTurn := g.state.CurrentPlayer == g.playerIndex
 
-	// Draw highlight behind hand when it's your turn
+	// Draw subtle glow behind hand when it's your turn
 	if isMyTurn {
-		highlightPadding := 15
-		highlight := ebiten.NewImage(totalWidth+highlightPadding*2, CardHeight+highlightPadding*2)
-		highlight.Fill(color.RGBA{255, 255, 100, 40})
+		highlightPadding := 10
+		highlight := ebiten.NewImage(totalWidth+highlightPadding*2, CardHeight+highlightPadding*2+30)
+		highlight.Fill(color.RGBA{255, 255, 255, 25})
 		op := &ebiten.DrawImageOptions{}
-		op.GeoM.Translate(float64(startX-highlightPadding), float64(handY-highlightPadding))
+		op.GeoM.Translate(float64(startX-highlightPadding), float64(handY-highlightPadding-30))
 		screen.DrawImage(highlight, op)
 	}
 
