@@ -8,9 +8,7 @@ import (
 )
 
 // NetworkClient stub for non-WASM builds
-type NetworkClient struct {
-	connected bool
-}
+type NetworkClient struct{}
 
 func NewNetworkClient() *NetworkClient {
 	return &NetworkClient{}

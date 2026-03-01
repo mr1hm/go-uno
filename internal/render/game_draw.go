@@ -45,6 +45,11 @@ func (g *UnoGame) drawDiscardPile(screen *ebiten.Image) {
 		g.drawCardBackRotatedScaled(screen, x+staggerX*g.scale(), y+staggerY*g.scale(), rotation)
 	}
 
+	// Skip drawing top card if there's a play animation (card is still in flight)
+	if len(g.playAnims) > 0 {
+		return
+	}
+
 	// Draw top card with slight rotation
 	topRotation := 0.0
 	if pileSize > 1 {
@@ -125,7 +130,12 @@ func (g *UnoGame) drawPlayerHand(screen *ebiten.Image) {
 	cardW := g.cardWidthF()
 	cardH := g.cardHeightF()
 
-	// Fan parameters - scale arc radius with screen
+	// Skip lift animations during drag - cards are static
+	if !g.dragging {
+		g.updateCardLiftAnimations(visibleCards)
+	}
+
+	// Fan parameters
 	arcRadius := 800.0 * g.scale()
 	centerX := float64(g.screenWidth) / 2
 	centerY := float64(g.screenHeight) + arcRadius - cardH - 20*g.scale()
@@ -144,13 +154,9 @@ func (g *UnoGame) drawPlayerHand(screen *ebiten.Image) {
 		actualFanAngle = min(0.6, 0.4+float64(visibleCards-7)*0.03)
 	}
 
-	g.updateCardLiftAnimations(visibleCards)
-
-	var hoveredCardX, hoveredCardY, hoveredAngle float64
-	var hoveredCard *game.Card
-
 	for i := range visibleCards {
 		card := player.Hand[i]
+		// Skip dragged card (drawn separately)
 		if g.dragging && i == g.dragCardIndex {
 			continue
 		}
@@ -166,25 +172,10 @@ func (g *UnoGame) drawPlayerHand(screen *ebiten.Image) {
 		x := centerX + arcRadius*math.Sin(angle) - cardW/2
 		y := centerY - arcRadius*math.Cos(angle) - g.cardLiftY[i]*g.scale()
 
-		if i == g.selectedCard && !g.dragging {
-			hoveredCard = &card
-			hoveredCardX = x
-			hoveredCardY = y
-			hoveredAngle = angle
-			continue
-		}
-
 		g.drawCardRotatedScaled(screen, card, x, y, angle)
 	}
 
-	if hoveredCard != nil {
-		g.drawCardRotatedScaled(screen, *hoveredCard, hoveredCardX, hoveredCardY, hoveredAngle)
-	}
-
-	if g.dragging && g.dragCardIndex >= 0 && g.dragCardIndex < len(player.Hand) {
-		g.drawCardScaled(screen, player.Hand[g.dragCardIndex], g.dragX, g.dragY, false)
-	}
-
+	// Draw labels
 	label := fmt.Sprintf("%s (%d)", player.Name, len(player.Hand))
 	if isMyTurn {
 		label = ">> " + label + " <<"
@@ -480,7 +471,7 @@ func (g *UnoGame) drawGameOver(screen *ebiten.Image) {
 
 // Scaled card drawing methods
 
-func (g *UnoGame) drawCardScaled(screen *ebiten.Image, card game.Card, x, y float64, highlight bool) {
+func (g *UnoGame) drawCardScaled(screen *ebiten.Image, card game.Card, x, y float64) {
 	sprite := GetCardSprite(card)
 	if sprite == nil {
 		return
@@ -496,6 +487,7 @@ func (g *UnoGame) drawCardRotatedScaled(screen *ebiten.Image, card game.Card, x,
 	if sprite == nil {
 		return
 	}
+
 	cardW := g.cardWidthF()
 	cardH := g.cardHeightF()
 
@@ -516,6 +508,7 @@ func (g *UnoGame) drawCardBackRotatedScaled(screen *ebiten.Image, x, y, rotation
 	if sprite == nil {
 		return
 	}
+
 	cardW := g.cardWidthF()
 	cardH := g.cardHeightF()
 
@@ -542,29 +535,3 @@ func getColorRGBA(c game.Color) color.RGBA {
 	}
 }
 
-// Cache for rotated text images to avoid allocations every frame
-var rotatedTextCache = make(map[string]*ebiten.Image)
-
-// drawRotatedText draws text at the given position with rotation
-// The text is rendered to an offscreen image first, then drawn with rotation
-func drawRotatedText(screen *ebiten.Image, text string, x, y int, rotation float64) {
-	// Estimate text size (roughly 6 pixels per character width, 16 height for debug font)
-	textWidth := len(text) * 6
-	textHeight := 16
-
-	// Check cache for existing text image
-	textImg, exists := rotatedTextCache[text]
-	if !exists {
-		// Create and cache offscreen image for text
-		textImg = ebiten.NewImage(textWidth, textHeight)
-		ebitenutil.DebugPrintAt(textImg, text, 0, 0)
-		rotatedTextCache[text] = textImg
-	}
-
-	// Draw with rotation around center
-	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(-float64(textWidth)/2, -float64(textHeight)/2)
-	op.GeoM.Rotate(rotation)
-	op.GeoM.Translate(float64(x)+float64(textWidth)/2, float64(y)+float64(textHeight)/2)
-	screen.DrawImage(textImg, op)
-}

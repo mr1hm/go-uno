@@ -39,11 +39,12 @@ func (g *UnoGame) CountAnimatingCards(playerIndex int) int {
 }
 
 const (
-	drawAnimSpeed    = 0.08
-	drawAnimDelay    = -1.1 // Delay between cards (negative = wait for previous to finish)
-	maxDrawAnims     = 8
-	cardLiftSpeed    = 4.0
-	cardLiftTarget   = 30.0
+	drawAnimSpeed     = 0.08
+	drawAnimDelay     = -1.1 // Delay between cards (negative = wait for previous to finish)
+	maxDrawAnims      = 8
+	cardLiftUpSpeed   = 15.0 // Instant lift (2 frames)
+	cardLiftDownSpeed = 15.0 // Instant lower (2 frames)
+	cardLiftTarget    = 30.0
 )
 
 // updateDrawAnimations advances all draw animations and removes completed ones
@@ -59,6 +60,8 @@ func (g *UnoGame) updateDrawAnimations() {
 
 	drawPileX := float64(g.screenWidth/2) - cardW - 20*scale
 	drawPileY := float64(g.screenHeight/2) - cardH/2 + offsetY
+
+	hadAnims := len(g.drawAnims)
 
 	// Filter in place to avoid allocation
 	writeIdx := 0
@@ -79,11 +82,11 @@ func (g *UnoGame) updateDrawAnimations() {
 		writeIdx++
 	}
 	g.drawAnims = g.drawAnims[:writeIdx]
-}
 
-// startDrawAnimation starts a draw animation for a player
-func (g *UnoGame) startDrawAnimation(playerIndex int) {
-	g.startDrawAnimationWithDelay(playerIndex, 0)
+	// Force redraw when animations complete to clear the old card position
+	if hadAnims > len(g.drawAnims) {
+		g.needsRedraw = true
+	}
 }
 
 // startDrawAnimationWithDelay starts a draw animation with optional delay (negative startProgress)
@@ -147,25 +150,33 @@ func (g *UnoGame) updateCardLiftAnimations(handSize int) {
 		g.cardLiftY = g.cardLiftY[:handSize]
 	}
 
-	// Animate card lift
+	// Track if any animation is happening
+	animating := false
+
+	// Animate card lift (only selected card lifts, others stay down)
 	for i := range handSize {
 		if i == g.selectedCard {
-			// Lift up
 			if g.cardLiftY[i] < cardLiftTarget {
-				g.cardLiftY[i] += cardLiftSpeed
+				g.cardLiftY[i] += cardLiftUpSpeed
 				if g.cardLiftY[i] > cardLiftTarget {
 					g.cardLiftY[i] = cardLiftTarget
 				}
+				animating = true
 			}
 		} else {
-			// Lower down
 			if g.cardLiftY[i] > 0 {
-				g.cardLiftY[i] -= cardLiftSpeed
+				g.cardLiftY[i] -= cardLiftDownSpeed
 				if g.cardLiftY[i] < 0 {
 					g.cardLiftY[i] = 0
 				}
+				animating = true
 			}
 		}
+	}
+
+	// Only trigger redraw if something actually animated
+	if animating {
+		g.needsRedraw = true
 	}
 }
 
@@ -235,6 +246,8 @@ func (g *UnoGame) updatePlayAnimations() {
 		return
 	}
 
+	hadAnims := len(g.playAnims) > 0
+
 	// Filter in place to avoid allocation
 	writeIdx := 0
 	for i := range g.playAnims {
@@ -249,12 +262,18 @@ func (g *UnoGame) updatePlayAnimations() {
 		writeIdx++
 	}
 	g.playAnims = g.playAnims[:writeIdx]
+
+	// When animations finish, invalidate baseFrame so discard pile top card gets drawn
+	if hadAnims && len(g.playAnims) == 0 {
+		baseFrameValid = false
+		g.needsRedraw = true
+	}
 }
 
 // drawPlayAnimations renders all active play animations
 func (g *UnoGame) drawPlayAnimations(screen *ebiten.Image) {
 	for _, anim := range g.playAnims {
-		g.drawCardScaled(screen, anim.card, anim.x, anim.y, false)
+		g.drawCardScaled(screen, anim.card, anim.x, anim.y)
 	}
 }
 

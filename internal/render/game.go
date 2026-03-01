@@ -41,8 +41,8 @@ type UnoGame struct {
 	pendingCard  int  // Card index waiting for color choice
 	screenWidth  int
 	screenHeight int
-	aiDelay      int       // Frames to wait before AI acts
-	cardLiftY    []float64 // Current lift offset for each card (for smooth animation)
+	aiDelay   int       // Frames to wait before AI acts
+	cardLiftY []float64 // Current lift offset for each card (for smooth animation)
 	// Drag state
 	dragging      bool
 	dragCardIndex int
@@ -112,13 +112,7 @@ func (g *UnoGame) updateScaleCache() {
 // scale returns the cached scale factor
 func (g *UnoGame) scale() float64 { return cachedScale }
 
-// Scaled dimension helpers (use cached values)
-func (g *UnoGame) cardWidth() int   { return int(cachedCardWidth) }
-func (g *UnoGame) cardHeight() int  { return int(cachedCardHeight) }
-func (g *UnoGame) cardGap() int     { return int(cachedCardGap) }
-func (g *UnoGame) playAreaOffsetY() int { return int(cachedPlayAreaOffsetY) }
-
-// Float versions for precise positioning
+// Scaled dimension helpers (float for precise positioning)
 func (g *UnoGame) cardWidthF() float64   { return cachedCardWidth }
 func (g *UnoGame) cardHeightF() float64  { return cachedCardHeight }
 func (g *UnoGame) cardGapF() float64     { return cachedCardGap }
@@ -138,6 +132,7 @@ func (g *UnoGame) startGame(mode GameMode) {
 		g.playerActionTimers = nil
 		g.needsRedraw = true
 		lastFrameValid = false
+		baseFrameValid = false
 
 		for i := 1; i < len(playerNames); i++ {
 			g.aiPlayers = append(g.aiPlayers, i)
@@ -293,6 +288,15 @@ func (g *UnoGame) Update() error {
 	// Update announcement fade
 	g.updateAnnouncement()
 
+	// Detect game state changes that require redraw
+	discardSize := len(g.state.DiscardPile)
+	if g.state.CurrentPlayer != cachedCurrentPlayer || discardSize != cachedDiscardSize {
+		baseFrameValid = false
+		g.needsRedraw = true
+		cachedCurrentPlayer = g.state.CurrentPlayer
+		cachedDiscardSize = discardSize
+	}
+
 	// Mark redraw needed if selected card changed (hover effect) or mouse clicked
 	if g.selectedCard != prevSelectedCard ||
 		inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) ||
@@ -313,16 +317,47 @@ var (
 // Skip-draw optimization state
 var lastFrameValid bool
 
+// Cached base frame (everything except player hand - changes rarely)
+var baseFrame *ebiten.Image
+var baseFrameValid bool
+
+// Track state for cache invalidation
+var cachedCurrentPlayer int = -1
+var cachedDiscardSize int = -1
+
 // hasActiveAnimations returns true if any animations are currently running
 func (g *UnoGame) hasActiveAnimations() bool {
 	return len(g.drawAnims) > 0 || len(g.playAnims) > 0 ||
 		g.announcementTimer > 0 || g.caughtPopup > 0
 }
 
+// isHoverAnimationComplete returns true if hover animation is done (can skip redraw)
+func (g *UnoGame) isHoverAnimationComplete() bool {
+	// Check ALL cards are at their target position
+	for i, lift := range g.cardLiftY {
+		if i == g.selectedCard {
+			// Selected card should be fully lifted
+			if lift < cardLiftTarget {
+				return false
+			}
+		} else {
+			// Other cards should be fully down
+			if lift > 0 {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 func (g *UnoGame) Draw(screen *ebiten.Image) {
-	// Check if we can skip drawing entirely (no changes, no animations)
-	// With SetScreenClearedEveryFrame(false), the previous frame stays on screen
-	if lastFrameValid && !g.needsRedraw && !g.hasActiveAnimations() {
+	// Check if we can skip drawing entirely
+	// Game over screen is static - always skip after first draw
+	if g.state != nil && g.state.GameOver && lastFrameValid && !g.needsRedraw {
+		return
+	}
+	if lastFrameValid && !g.needsRedraw && !g.hasActiveAnimations() &&
+		!g.dragging && g.isHoverAnimationComplete() {
 		return
 	}
 
@@ -342,34 +377,48 @@ func (g *UnoGame) Draw(screen *ebiten.Image) {
 		return
 	}
 
-	// Draw directly to screen (no intermediate buffer needed with SetScreenClearedEveryFrame(false))
-
-	// Draw background (cached at current screen size)
-	if bg := GetBackgroundSprite(); bg != nil {
-		// Only rescale if screen size changed
-		if scaledBackground == nil || lastBackgroundWidth != g.screenWidth || lastBackgroundHeight != g.screenHeight {
-			scaledBackground = ebiten.NewImage(g.screenWidth, g.screenHeight)
-			bgBounds := bg.Bounds()
-			scaleX := float64(g.screenWidth) / float64(bgBounds.Dx())
-			scaleY := float64(g.screenHeight) / float64(bgBounds.Dy())
-			op := &ebiten.DrawImageOptions{}
-			op.GeoM.Scale(scaleX, scaleY)
-			scaledBackground.DrawImage(bg, op)
-			lastBackgroundWidth = g.screenWidth
-			lastBackgroundHeight = g.screenHeight
-		}
-		screen.DrawImage(scaledBackground, nil)
-	} else {
-		screen.Fill(color.RGBA{34, 139, 34, 255}) // Fallback green table
+	// Create/resize base frame cache if needed
+	if baseFrame == nil || baseFrame.Bounds().Dx() != g.screenWidth {
+		baseFrame = ebiten.NewImage(g.screenWidth, g.screenHeight)
+		baseFrameValid = false
 	}
 
-	g.drawDiscardPile(screen)
-	g.drawDrawPile(screen)
+	// Regenerate base frame only when needed (expensive elements that rarely change)
+	if !baseFrameValid {
+		baseFrame.Clear()
+
+		// Draw background
+		if bg := GetBackgroundSprite(); bg != nil {
+			if scaledBackground == nil || lastBackgroundWidth != g.screenWidth || lastBackgroundHeight != g.screenHeight {
+				scaledBackground = ebiten.NewImage(g.screenWidth, g.screenHeight)
+				bgBounds := bg.Bounds()
+				scaleX := float64(g.screenWidth) / float64(bgBounds.Dx())
+				scaleY := float64(g.screenHeight) / float64(bgBounds.Dy())
+				op := &ebiten.DrawImageOptions{}
+				op.GeoM.Scale(scaleX, scaleY)
+				scaledBackground.DrawImage(bg, op)
+				lastBackgroundWidth = g.screenWidth
+				lastBackgroundHeight = g.screenHeight
+			}
+			baseFrame.DrawImage(scaledBackground, nil)
+		} else {
+			baseFrame.Fill(color.RGBA{34, 139, 34, 255})
+		}
+
+		g.drawDiscardPile(baseFrame)
+		g.drawDrawPile(baseFrame)
+		g.drawOpponents(baseFrame)
+		g.drawUI(baseFrame)
+		baseFrameValid = true
+	}
+
+	// Draw directly to screen (no intermediate buffer)
+	screen.DrawImage(baseFrame, nil)
+
+	// Draw dynamic elements
 	g.drawPlayerHand(screen)
-	g.drawOpponents(screen)
 	g.drawDrawAnimations(screen)
 	g.drawPlayAnimations(screen)
-	g.drawUI(screen)
 
 	if g.colorPicker {
 		g.drawColorPicker(screen)
@@ -379,15 +428,33 @@ func (g *UnoGame) Draw(screen *ebiten.Image) {
 		g.drawCaughtPopup(screen)
 	}
 
-	// Draw centered announcement with fade
 	g.drawAnnouncement(screen)
 
 	if g.state.GameOver {
 		g.drawGameOver(screen)
 	}
 
+	// Draw dragged card on top if dragging
+	if g.dragging {
+		g.drawDraggedCard(screen)
+	}
+
+	// Cache state for skip optimization
 	lastFrameValid = true
 	g.needsRedraw = false
+}
+
+// drawDraggedCard draws only the card being dragged
+func (g *UnoGame) drawDraggedCard(screen *ebiten.Image) {
+	if !g.dragging || g.dragCardIndex < 0 {
+		return
+	}
+	player := g.state.Players[g.playerIndex]
+	if g.dragCardIndex >= len(player.Hand) {
+		return
+	}
+	card := player.Hand[g.dragCardIndex]
+	g.drawCardScaled(screen, card, g.dragX, g.dragY)
 }
 
 func (g *UnoGame) Layout(outsideWidth, outsideHeight int) (int, int) {
