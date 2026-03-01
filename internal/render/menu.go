@@ -31,10 +31,19 @@ type MenuButton struct {
 	Mode  GameMode
 }
 
+// Cached button images to avoid per-frame allocations
+// Key format: "label:width:height:hovered"
+var buttonCache = make(map[string]*ebiten.Image)
+
+// Shared 1x1 pixel for drawing borders efficiently
+var borderPixel *ebiten.Image
+
 var menuButtons = []MenuButton{
 	{"New Game (AI)", ModeAI},
 	{"New Game (Multiplayer)", ModePlayers},
 }
+
+var lastHoveredButton = -1 // Track hover changes for skip-draw
 
 func (g *UnoGame) updateMenu() {
 	mx, my := ebiten.CursorPosition()
@@ -61,16 +70,25 @@ func (g *UnoGame) updateMenu() {
 	}
 	startY := contentStartY + titleHeight + titleGap
 
+	// Track which button is hovered
+	hoveredButton := -1
 	for i, btn := range menuButtons {
 		btnX := (g.screenWidth - btnWidth) / 2
 		btnY := startY + i*(btnHeight+btnGap)
 
 		if mx >= btnX && mx < btnX+btnWidth &&
 			my >= btnY && my < btnY+btnHeight {
+			hoveredButton = i
 			if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 				g.startGame(btn.Mode)
 			}
 		}
+	}
+
+	// Only redraw if hover state changed
+	if hoveredButton != lastHoveredButton {
+		lastHoveredButton = hoveredButton
+		g.needsRedraw = true
 	}
 }
 
@@ -134,25 +152,38 @@ func (g *UnoGame) drawMenu(screen *ebiten.Image) {
 }
 
 func drawMenuButton(screen *ebiten.Image, x, y, w, h int, label string, hovered bool) {
-	// Button background
-	var bgColor color.RGBA
+	// Build cache key including dimensions and hover state
+	hoverKey := "0"
 	if hovered {
-		bgColor = color.RGBA{80, 80, 100, 255}
-	} else {
-		bgColor = color.RGBA{50, 50, 70, 255}
+		hoverKey = "1"
+	}
+	cacheKey := fmt.Sprintf("%s:%d:%d:%s", label, w, h, hoverKey)
+
+	// Check cache
+	btnImg, exists := buttonCache[cacheKey]
+	if !exists {
+		// Button background
+		var bgColor color.RGBA
+		if hovered {
+			bgColor = color.RGBA{80, 80, 100, 255}
+		} else {
+			bgColor = color.RGBA{50, 50, 70, 255}
+		}
+
+		// Border color
+		borderColor := color.RGBA{100, 100, 130, 255}
+		if hovered {
+			borderColor = color.RGBA{255, 215, 0, 255} // Gold on hover
+		}
+
+		// Create and cache button image
+		btnImg = ebiten.NewImage(w, h)
+		btnImg.Fill(bgColor)
+		drawRectBorder(btnImg, w, h, borderColor)
+		buttonCache[cacheKey] = btnImg
 	}
 
-	// Draw button rect
-	btnImg := ebiten.NewImage(w, h)
-	btnImg.Fill(bgColor)
-
-	// Border
-	borderColor := color.RGBA{100, 100, 130, 255}
-	if hovered {
-		borderColor = color.RGBA{255, 215, 0, 255} // Gold on hover
-	}
-	drawRect(btnImg, 0, 0, w, h, borderColor)
-
+	// Draw cached button
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Translate(float64(x), float64(y))
 	screen.DrawImage(btnImg, op)
@@ -171,17 +202,35 @@ func drawMenuButton(screen *ebiten.Image, x, y, w, h int, label string, hovered 
 	}
 }
 
-func drawRect(img *ebiten.Image, x, y, w, h int, c color.Color) {
-	// Top
-	for i := x; i < x+w; i++ {
-		img.Set(i, y, c)
-		img.Set(i, y+h-1, c)
+// drawRectBorder draws a 1px border using scaled pixel draws (much faster than Set per pixel)
+func drawRectBorder(img *ebiten.Image, w, h int, c color.Color) {
+	// Initialize shared pixel if needed
+	if borderPixel == nil {
+		borderPixel = ebiten.NewImage(1, 1)
 	}
-	// Sides
-	for i := y; i < y+h; i++ {
-		img.Set(x, i, c)
-		img.Set(x+w-1, i, c)
-	}
+	borderPixel.Fill(c)
+
+	// Top border
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Scale(float64(w), 1)
+	img.DrawImage(borderPixel, op)
+
+	// Bottom border
+	op = &ebiten.DrawImageOptions{}
+	op.GeoM.Scale(float64(w), 1)
+	op.GeoM.Translate(0, float64(h-1))
+	img.DrawImage(borderPixel, op)
+
+	// Left border
+	op = &ebiten.DrawImageOptions{}
+	op.GeoM.Scale(1, float64(h))
+	img.DrawImage(borderPixel, op)
+
+	// Right border
+	op = &ebiten.DrawImageOptions{}
+	op.GeoM.Scale(1, float64(h))
+	op.GeoM.Translate(float64(w-1), 0)
+	img.DrawImage(borderPixel, op)
 }
 
 var menuTitleFace *text.GoTextFace

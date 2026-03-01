@@ -157,6 +157,7 @@ func (g *UnoGame) handlePlayerTurn() {
 	if g.dragging {
 		g.dragX = float64(mx) - cardW/2
 		g.dragY = float64(my) - cardH/2
+		g.needsRedraw = true // Redraw while dragging
 
 		if inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft) {
 			g.dragging = false
@@ -192,6 +193,7 @@ func (g *UnoGame) handlePlayerTurn() {
 			g.dragCardIndex = g.selectedCard
 			g.dragX = float64(mx) - cardW/2
 			g.dragY = float64(my) - cardH/2
+			g.needsRedraw = true
 			return
 		}
 	}

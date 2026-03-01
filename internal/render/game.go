@@ -31,6 +31,7 @@ type UnoGame struct {
 	state        *game.GameState
 	playerIndex  int // Which player is human (0)
 	aiPlayers    []int
+	needsRedraw  bool // Only redraw when this is true
 	// Multiplayer
 	network      *NetworkClient
 	lobbyPlayers []string // Players in lobby
@@ -84,27 +85,44 @@ func NewUnoGame(playerNames []string) *UnoGame {
 	return g
 }
 
-// scale returns the current scale factor based on screen size
-func (g *UnoGame) scale() float64 {
+// Cached scale values - updated once per frame in Layout()
+var (
+	cachedScale        float64 = 1.0
+	cachedCardWidth    float64 = baseCardWidth
+	cachedCardHeight   float64 = baseCardHeight
+	cachedCardGap      float64 = baseCardGap
+	cachedPlayAreaOffsetY float64 = basePlayAreaOffsetY
+)
+
+// updateScaleCache recalculates cached scale values (called once per frame in Layout)
+func (g *UnoGame) updateScaleCache() {
 	scaleX := float64(g.screenWidth) / baseWidth
 	scaleY := float64(g.screenHeight) / baseHeight
 	if scaleX < scaleY {
-		return scaleX
+		cachedScale = scaleX
+	} else {
+		cachedScale = scaleY
 	}
-	return scaleY
+	cachedCardWidth = baseCardWidth * cachedScale
+	cachedCardHeight = baseCardHeight * cachedScale
+	cachedCardGap = baseCardGap * cachedScale
+	cachedPlayAreaOffsetY = basePlayAreaOffsetY * cachedScale
 }
 
-// Scaled dimension helpers
-func (g *UnoGame) cardWidth() int   { return int(baseCardWidth * g.scale()) }
-func (g *UnoGame) cardHeight() int  { return int(baseCardHeight * g.scale()) }
-func (g *UnoGame) cardGap() int     { return int(baseCardGap * g.scale()) }
-func (g *UnoGame) playAreaOffsetY() int { return int(basePlayAreaOffsetY * g.scale()) }
+// scale returns the cached scale factor
+func (g *UnoGame) scale() float64 { return cachedScale }
+
+// Scaled dimension helpers (use cached values)
+func (g *UnoGame) cardWidth() int   { return int(cachedCardWidth) }
+func (g *UnoGame) cardHeight() int  { return int(cachedCardHeight) }
+func (g *UnoGame) cardGap() int     { return int(cachedCardGap) }
+func (g *UnoGame) playAreaOffsetY() int { return int(cachedPlayAreaOffsetY) }
 
 // Float versions for precise positioning
-func (g *UnoGame) cardWidthF() float64   { return baseCardWidth * g.scale() }
-func (g *UnoGame) cardHeightF() float64  { return baseCardHeight * g.scale() }
-func (g *UnoGame) cardGapF() float64     { return baseCardGap * g.scale() }
-func (g *UnoGame) playAreaOffsetYF() float64 { return basePlayAreaOffsetY * g.scale() }
+func (g *UnoGame) cardWidthF() float64   { return cachedCardWidth }
+func (g *UnoGame) cardHeightF() float64  { return cachedCardHeight }
+func (g *UnoGame) cardGapF() float64     { return cachedCardGap }
+func (g *UnoGame) playAreaOffsetYF() float64 { return cachedPlayAreaOffsetY }
 
 func (g *UnoGame) startGame(mode GameMode) {
 	if mode == ModeAI {
@@ -118,6 +136,8 @@ func (g *UnoGame) startGame(mode GameMode) {
 		g.playAnims = nil
 		g.playerActions = nil
 		g.playerActionTimers = nil
+		g.needsRedraw = true
+		lastFrameValid = false
 
 		for i := 1; i < len(playerNames); i++ {
 			g.aiPlayers = append(g.aiPlayers, i)
@@ -159,6 +179,7 @@ func (g *UnoGame) returnToMenu() {
 
 func (g *UnoGame) Update() error {
 	// Screen size is set in Layout()
+	prevSelectedCard := g.selectedCard
 
 	// Handle menu
 	if g.mode == ModeMenu {
@@ -272,31 +293,72 @@ func (g *UnoGame) Update() error {
 	// Update announcement fade
 	g.updateAnnouncement()
 
+	// Mark redraw needed if selected card changed (hover effect) or mouse clicked
+	if g.selectedCard != prevSelectedCard ||
+		inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) ||
+		inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft) {
+		g.needsRedraw = true
+	}
+
 	return nil
 }
 
+// Cached scaled background
+var (
+	scaledBackground     *ebiten.Image
+	lastBackgroundWidth  int
+	lastBackgroundHeight int
+)
+
+// Skip-draw optimization state
+var lastFrameValid bool
+
+// hasActiveAnimations returns true if any animations are currently running
+func (g *UnoGame) hasActiveAnimations() bool {
+	return len(g.drawAnims) > 0 || len(g.playAnims) > 0 ||
+		g.announcementTimer > 0 || g.caughtPopup > 0
+}
+
 func (g *UnoGame) Draw(screen *ebiten.Image) {
+	// Check if we can skip drawing entirely (no changes, no animations)
+	// With SetScreenClearedEveryFrame(false), the previous frame stays on screen
+	if lastFrameValid && !g.needsRedraw && !g.hasActiveAnimations() {
+		return
+	}
+
 	// Draw menu
 	if g.mode == ModeMenu {
 		g.drawMenu(screen)
+		lastFrameValid = true
+		g.needsRedraw = false
 		return
 	}
 
 	// Draw lobby
 	if g.mode == ModeLobby {
 		g.drawLobby(screen)
+		lastFrameValid = true
+		g.needsRedraw = false
 		return
 	}
 
-	// Draw background
+	// Draw directly to screen (no intermediate buffer needed with SetScreenClearedEveryFrame(false))
+
+	// Draw background (cached at current screen size)
 	if bg := GetBackgroundSprite(); bg != nil {
-		// Scale background to fit screen
-		bgBounds := bg.Bounds()
-		scaleX := float64(g.screenWidth) / float64(bgBounds.Dx())
-		scaleY := float64(g.screenHeight) / float64(bgBounds.Dy())
-		op := &ebiten.DrawImageOptions{}
-		op.GeoM.Scale(scaleX, scaleY)
-		screen.DrawImage(bg, op)
+		// Only rescale if screen size changed
+		if scaledBackground == nil || lastBackgroundWidth != g.screenWidth || lastBackgroundHeight != g.screenHeight {
+			scaledBackground = ebiten.NewImage(g.screenWidth, g.screenHeight)
+			bgBounds := bg.Bounds()
+			scaleX := float64(g.screenWidth) / float64(bgBounds.Dx())
+			scaleY := float64(g.screenHeight) / float64(bgBounds.Dy())
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Scale(scaleX, scaleY)
+			scaledBackground.DrawImage(bg, op)
+			lastBackgroundWidth = g.screenWidth
+			lastBackgroundHeight = g.screenHeight
+		}
+		screen.DrawImage(scaledBackground, nil)
 	} else {
 		screen.Fill(color.RGBA{34, 139, 34, 255}) // Fallback green table
 	}
@@ -323,10 +385,16 @@ func (g *UnoGame) Draw(screen *ebiten.Image) {
 	if g.state.GameOver {
 		g.drawGameOver(screen)
 	}
+
+	lastFrameValid = true
+	g.needsRedraw = false
 }
 
 func (g *UnoGame) Layout(outsideWidth, outsideHeight int) (int, int) {
-	g.screenWidth = outsideWidth
-	g.screenHeight = outsideHeight
-	return outsideWidth, outsideHeight
+	// Render at fixed internal resolution for performance
+	// GPU will scale to actual window size
+	g.screenWidth = baseWidth
+	g.screenHeight = baseHeight
+	g.updateScaleCache()
+	return baseWidth, baseHeight
 }

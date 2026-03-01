@@ -48,7 +48,10 @@ const (
 
 // updateDrawAnimations advances all draw animations and removes completed ones
 func (g *UnoGame) updateDrawAnimations() {
-	remaining := make([]drawAnimation, 0, len(g.drawAnims))
+	if len(g.drawAnims) == 0 {
+		return
+	}
+
 	scale := g.scale()
 	cardW := g.cardWidthF()
 	cardH := g.cardHeightF()
@@ -57,22 +60,25 @@ func (g *UnoGame) updateDrawAnimations() {
 	drawPileX := float64(g.screenWidth/2) - cardW - 20*scale
 	drawPileY := float64(g.screenHeight/2) - cardH/2 + offsetY
 
-	for _, anim := range g.drawAnims {
-		anim.progress += drawAnimSpeed
-		if anim.progress >= 1 {
-			continue // Animation complete
+	// Filter in place to avoid allocation
+	writeIdx := 0
+	for i := range g.drawAnims {
+		g.drawAnims[i].progress += drawAnimSpeed
+		if g.drawAnims[i].progress >= 1 {
+			continue // Animation complete, skip it
 		}
 		// Lerp position (only when progress > 0)
-		if anim.progress > 0 {
-			anim.x = drawPileX + (anim.targetX-drawPileX)*anim.progress
-			anim.y = drawPileY + (anim.targetY-drawPileY)*anim.progress
+		if g.drawAnims[i].progress > 0 {
+			g.drawAnims[i].x = drawPileX + (g.drawAnims[i].targetX-drawPileX)*g.drawAnims[i].progress
+			g.drawAnims[i].y = drawPileY + (g.drawAnims[i].targetY-drawPileY)*g.drawAnims[i].progress
 		} else {
-			anim.x = drawPileX
-			anim.y = drawPileY
+			g.drawAnims[i].x = drawPileX
+			g.drawAnims[i].y = drawPileY
 		}
-		remaining = append(remaining, anim)
+		g.drawAnims[writeIdx] = g.drawAnims[i]
+		writeIdx++
 	}
-	g.drawAnims = remaining
+	g.drawAnims = g.drawAnims[:writeIdx]
 }
 
 // startDrawAnimation starts a draw animation for a player
@@ -225,18 +231,24 @@ func (g *UnoGame) startPlayAnimation(playerIndex int, card game.Card) {
 
 // updatePlayAnimations advances all play animations
 func (g *UnoGame) updatePlayAnimations() {
-	remaining := make([]playAnimation, 0, len(g.playAnims))
-	for _, anim := range g.playAnims {
-		anim.progress += playAnimSpeed
-		if anim.progress >= 1 {
-			continue // Animation complete
+	if len(g.playAnims) == 0 {
+		return
+	}
+
+	// Filter in place to avoid allocation
+	writeIdx := 0
+	for i := range g.playAnims {
+		g.playAnims[i].progress += playAnimSpeed
+		if g.playAnims[i].progress >= 1 {
+			continue // Animation complete, skip it
 		}
 		// Lerp position
-		anim.x = anim.startX + (anim.targetX-anim.startX)*anim.progress
-		anim.y = anim.startY + (anim.targetY-anim.startY)*anim.progress
-		remaining = append(remaining, anim)
+		g.playAnims[i].x = g.playAnims[i].startX + (g.playAnims[i].targetX-g.playAnims[i].startX)*g.playAnims[i].progress
+		g.playAnims[i].y = g.playAnims[i].startY + (g.playAnims[i].targetY-g.playAnims[i].startY)*g.playAnims[i].progress
+		g.playAnims[writeIdx] = g.playAnims[i]
+		writeIdx++
 	}
-	g.playAnims = remaining
+	g.playAnims = g.playAnims[:writeIdx]
 }
 
 // drawPlayAnimations renders all active play animations

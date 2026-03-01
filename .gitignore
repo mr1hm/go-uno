@@ -15,3 +15,6 @@ web/uno.wasm
 # OS files
 .DS_Store
 Thumbs.db
+
+# Profiling
+*.prof

@@ -12,14 +12,16 @@ import (
 
 // Cached UI images to avoid allocations every frame
 var (
-	colorIndicator *ebiten.Image
-	turnBannerGlow *ebiten.Image
-	turnBanner     *ebiten.Image
-	waitBanner     *ebiten.Image
-	passButton     *ebiten.Image
-	unoButtonRed   *ebiten.Image
-	challengeBtn   *ebiten.Image
-	colorBoxes     [4]*ebiten.Image
+	colorIndicators [5]*ebiten.Image // One per game.Color
+	turnBannerGlow  *ebiten.Image
+	turnBanner      *ebiten.Image
+	waitBanner      *ebiten.Image
+	passButton      *ebiten.Image
+	unoButtonRed    *ebiten.Image
+	challengeBtn    *ebiten.Image
+	colorBoxes      [4]*ebiten.Image
+	gameOverOverlay *ebiten.Image
+	lastOverlaySize [2]int
 )
 
 func (g *UnoGame) drawDiscardPile(screen *ebiten.Image) {
@@ -50,14 +52,17 @@ func (g *UnoGame) drawDiscardPile(screen *ebiten.Image) {
 	}
 	g.drawCardRotatedScaled(screen, g.state.CurrentCard(), x, y, topRotation)
 
-	// Show chosen color indicator
-	if colorIndicator == nil {
-		colorIndicator = ebiten.NewImage(20, 20)
+	// Show chosen color indicator (cached per color)
+	colorIdx := int(g.state.ChosenColor)
+	if colorIdx >= 0 && colorIdx < len(colorIndicators) {
+		if colorIndicators[colorIdx] == nil {
+			colorIndicators[colorIdx] = ebiten.NewImage(20, 20)
+			colorIndicators[colorIdx].Fill(getColorRGBA(g.state.ChosenColor))
+		}
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Translate(x+cardW/2-10, y-25*g.scale())
+		screen.DrawImage(colorIndicators[colorIdx], op)
 	}
-	colorIndicator.Fill(getColorRGBA(g.state.ChosenColor))
-	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(x+cardW/2-10, y-25*g.scale())
-	screen.DrawImage(colorIndicator, op)
 }
 
 func (g *UnoGame) drawDirectionArrow(screen *ebiten.Image) {
@@ -293,10 +298,26 @@ func (g *UnoGame) drawOpponents(screen *ebiten.Image) {
 	}
 }
 
+// Cached UI dimensions to detect when we need to recreate images
+var lastUIScale float64 = -1
+
+
 func (g *UnoGame) drawUI(screen *ebiten.Image) {
 	scale := g.scale()
 	cardW := g.cardWidthF()
 	offsetY := g.playAreaOffsetYF()
+
+	// Recreate cached UI images only when scale changes
+	if scale != lastUIScale {
+		lastUIScale = scale
+		// Invalidate all cached UI images
+		turnBannerGlow = nil
+		turnBanner = nil
+		waitBanner = nil
+		passButton = nil
+		unoButtonRed = nil
+		challengeBtn = nil
+	}
 
 	currentPlayer := g.state.CurrentPlayerObj()
 	if g.state.CurrentPlayer == g.playerIndex {
@@ -305,18 +326,19 @@ func (g *UnoGame) drawUI(screen *ebiten.Image) {
 		bannerX := (g.screenWidth - bannerWidth) / 2
 		bannerY := int(15 * scale)
 
-		if turnBannerGlow == nil || turnBannerGlow.Bounds().Dx() != bannerWidth+8 {
+		// Create and fill only once
+		if turnBannerGlow == nil {
 			turnBannerGlow = ebiten.NewImage(bannerWidth+8, bannerHeight+8)
+			turnBannerGlow.Fill(color.RGBA{255, 200, 0, 80})
 		}
-		turnBannerGlow.Fill(color.RGBA{255, 200, 0, 80})
 		glowOp := &ebiten.DrawImageOptions{}
 		glowOp.GeoM.Translate(float64(bannerX-4), float64(bannerY-4))
 		screen.DrawImage(turnBannerGlow, glowOp)
 
-		if turnBanner == nil || turnBanner.Bounds().Dx() != bannerWidth {
+		if turnBanner == nil {
 			turnBanner = ebiten.NewImage(bannerWidth, bannerHeight)
+			turnBanner.Fill(color.RGBA{200, 30, 30, 240})
 		}
-		turnBanner.Fill(color.RGBA{200, 30, 30, 240})
 		op := &ebiten.DrawImageOptions{}
 		op.GeoM.Translate(float64(bannerX), float64(bannerY))
 		screen.DrawImage(turnBanner, op)
@@ -327,10 +349,10 @@ func (g *UnoGame) drawUI(screen *ebiten.Image) {
 		bannerWidth := int(200 * scale)
 		bannerX := (g.screenWidth - bannerWidth) / 2
 
-		if waitBanner == nil || waitBanner.Bounds().Dx() != bannerWidth {
+		if waitBanner == nil {
 			waitBanner = ebiten.NewImage(bannerWidth, int(28*scale))
+			waitBanner.Fill(color.RGBA{50, 50, 50, 180})
 		}
-		waitBanner.Fill(color.RGBA{50, 50, 50, 180})
 		op := &ebiten.DrawImageOptions{}
 		op.GeoM.Translate(float64(bannerX), 15*scale)
 		screen.DrawImage(waitBanner, op)
@@ -346,10 +368,10 @@ func (g *UnoGame) drawUI(screen *ebiten.Image) {
 		passY := g.screenHeight - int(60*scale)
 		btnW := int(100 * scale)
 		btnH := int(40 * scale)
-		if passButton == nil || passButton.Bounds().Dx() != btnW {
+		if passButton == nil {
 			passButton = ebiten.NewImage(btnW, btnH)
+			passButton.Fill(color.RGBA{100, 100, 100, 255})
 		}
-		passButton.Fill(color.RGBA{100, 100, 100, 255})
 		op := &ebiten.DrawImageOptions{}
 		op.GeoM.Translate(float64(passX), float64(passY))
 		screen.DrawImage(passButton, op)
@@ -367,10 +389,10 @@ func (g *UnoGame) drawUI(screen *ebiten.Image) {
 
 	unoX := buttonX
 	unoY := pileCenterY - totalHeight/2
-	if unoButtonRed == nil || unoButtonRed.Bounds().Dx() != buttonWidth {
+	if unoButtonRed == nil {
 		unoButtonRed = ebiten.NewImage(buttonWidth, buttonHeight)
+		unoButtonRed.Fill(color.RGBA{200, 30, 30, 255})
 	}
-	unoButtonRed.Fill(color.RGBA{200, 30, 30, 255})
 	unoOp := &ebiten.DrawImageOptions{}
 	unoOp.GeoM.Translate(float64(unoX), float64(unoY))
 	screen.DrawImage(unoButtonRed, unoOp)
@@ -378,10 +400,10 @@ func (g *UnoGame) drawUI(screen *ebiten.Image) {
 
 	chalX := unoX
 	chalY := unoY + buttonHeight + buttonGap
-	if challengeBtn == nil || challengeBtn.Bounds().Dx() != buttonWidth {
+	if challengeBtn == nil {
 		challengeBtn = ebiten.NewImage(buttonWidth, buttonHeight)
+		challengeBtn.Fill(color.RGBA{80, 80, 80, 255})
 	}
-	challengeBtn.Fill(color.RGBA{80, 80, 80, 255})
 	chalOp := &ebiten.DrawImageOptions{}
 	chalOp.GeoM.Translate(float64(chalX), float64(chalY))
 	screen.DrawImage(challengeBtn, chalOp)
@@ -413,7 +435,7 @@ func (g *UnoGame) drawColorPicker(screen *ebiten.Image) {
 	}
 }
 
-// Cached popup image
+// Cached popup image (created once and reused)
 var caughtPopupBg *ebiten.Image
 
 func (g *UnoGame) drawCaughtPopup(screen *ebiten.Image) {
@@ -422,11 +444,11 @@ func (g *UnoGame) drawCaughtPopup(screen *ebiten.Image) {
 	popupX := (g.screenWidth - popupWidth) / 2
 	popupY := (g.screenHeight - popupHeight) / 2
 
-	// Draw popup background
+	// Draw popup background (create and fill only once)
 	if caughtPopupBg == nil {
 		caughtPopupBg = ebiten.NewImage(popupWidth, popupHeight)
+		caughtPopupBg.Fill(color.RGBA{200, 50, 50, 240})
 	}
-	caughtPopupBg.Fill(color.RGBA{200, 50, 50, 240})
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Translate(float64(popupX), float64(popupY))
 	screen.DrawImage(caughtPopupBg, op)
@@ -442,9 +464,14 @@ func (g *UnoGame) drawCaughtPopup(screen *ebiten.Image) {
 }
 
 func (g *UnoGame) drawGameOver(screen *ebiten.Image) {
-	overlay := ebiten.NewImage(g.screenWidth, g.screenHeight)
-	overlay.Fill(color.RGBA{0, 0, 0, 200})
-	screen.DrawImage(overlay, nil)
+	// Recreate overlay only when screen size changes
+	if gameOverOverlay == nil || lastOverlaySize[0] != g.screenWidth || lastOverlaySize[1] != g.screenHeight {
+		gameOverOverlay = ebiten.NewImage(g.screenWidth, g.screenHeight)
+		gameOverOverlay.Fill(color.RGBA{0, 0, 0, 200})
+		lastOverlaySize[0] = g.screenWidth
+		lastOverlaySize[1] = g.screenHeight
+	}
+	screen.DrawImage(gameOverOverlay, nil)
 
 	msg := fmt.Sprintf("%s WINS!", g.state.Winner.Name)
 	ebitenutil.DebugPrintAt(screen, msg, g.screenWidth/2-50, g.screenHeight/2-20)

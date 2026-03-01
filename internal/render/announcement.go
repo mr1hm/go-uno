@@ -21,6 +21,10 @@ var (
 	labelFace           *text.GoTextFace
 	labelFaceSmall      *text.GoTextFace
 	fontSource          *text.GoTextFaceSource
+
+	// Cached character measurements to avoid per-frame text.Measure calls
+	charMeasureCacheBig   = make(map[rune][2]float64) // char -> [width, height]
+	charMeasureCacheLabel = make(map[rune][2]float64)
 )
 
 func init() {
@@ -198,6 +202,26 @@ func (g *UnoGame) drawAnnouncement(screen *ebiten.Image) {
 	text.Draw(screen, g.announcement, announcementFace, op)
 }
 
+// measureCharLabel returns cached character dimensions for labelFace
+func measureCharLabel(char rune) (float64, float64) {
+	if dims, ok := charMeasureCacheLabel[char]; ok {
+		return dims[0], dims[1]
+	}
+	w, h := text.Measure(string(char), labelFace, 0)
+	charMeasureCacheLabel[char] = [2]float64{w, h}
+	return w, h
+}
+
+// measureCharBig returns cached character dimensions for announcementFaceBig
+func measureCharBig(char rune) (float64, float64) {
+	if dims, ok := charMeasureCacheBig[char]; ok {
+		return dims[0], dims[1]
+	}
+	w, h := text.Measure(string(char), announcementFaceBig, 0)
+	charMeasureCacheBig[char] = [2]float64{w, h}
+	return w, h
+}
+
 // DrawFanText draws text in an arc/fan style, each character at a different angle
 // centerX, centerY is the center of the arc, arcRadius is distance from center to characters
 // fanAngle is total arc span in radians (e.g., 0.5 for ~30 degrees)
@@ -223,9 +247,9 @@ func DrawFanText(screen *ebiten.Image, label string, centerX, centerY, arcRadius
 		charX := centerX + arcRadius*math.Sin(angle)
 		charY := centerY + arcRadius*(1-math.Cos(angle))
 
-		// Measure single character
+		// Get cached character dimensions
 		charStr := string(char)
-		charW, charH := text.Measure(charStr, labelFace, 0)
+		charW, charH := measureCharLabel(char)
 
 		// Draw shadow
 		shadowOp := &text.DrawOptions{}
@@ -269,8 +293,9 @@ func DrawBigFanText(screen *ebiten.Image, label string, centerX, centerY, arcRad
 		charX := centerX + arcRadius*math.Sin(angle)
 		charY := centerY + arcRadius*(1-math.Cos(angle))*0.3 // Flatter arc for big text
 
+		// Get cached character dimensions
 		charStr := string(char)
-		charW, charH := text.Measure(charStr, announcementFaceBig, 0)
+		charW, charH := measureCharBig(char)
 
 		// Draw shadow
 		shadowOp := &text.DrawOptions{}
@@ -322,9 +347,9 @@ func DrawFanTextRotated(screen *ebiten.Image, label string, centerX, centerY, ar
 
 		totalAngle := baseRotation + fanOffset
 
-		// Measure single character
+		// Get cached character dimensions
 		charStr := string(char)
-		charW, charH := text.Measure(charStr, labelFace, 0)
+		charW, charH := measureCharLabel(char)
 
 		// Draw shadow
 		shadowOp := &text.DrawOptions{}

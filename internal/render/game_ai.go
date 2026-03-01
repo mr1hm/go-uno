@@ -93,6 +93,9 @@ func (g *UnoGame) handleAITurn() {
 			g.SetPlayerAction(playerIdx, "Draw & Pass")
 		}
 	}
+
+	// Mark frame as needing redraw since state changed
+	g.needsRedraw = true
 }
 
 func (g *UnoGame) pickAIColor(player *game.Player) game.Color {
